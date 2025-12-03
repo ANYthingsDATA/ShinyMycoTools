@@ -10,6 +10,7 @@ options(shiny.maxRequestSize = 30 * 1024^2)  # Set limit to 30 MB
 
 # UI Definition
 ui <- dashboardPage(
+  skin = "purple",
   dashboardHeader(title = "MycoTools Shiny App"),
   dashboardSidebar(
     sidebarMenu(
@@ -74,7 +75,7 @@ ui <- dashboardPage(
 
                 # Dropdown input for make_complete_date
                 selectInput("input_site_id", "Input Site ID Column", choices = NULL),
-                selectInput("input_sensor_id", "Input Sensor ID Column", choices = NULL),
+                # selectInput("input_sensor_id", "Input Sensor ID Column", choices = NULL),
                 selectInput("timeframe", "Timeframe", choices = c("hour", "day", "week", "month")),
 
                 # Dropdown input for make_mycoindex_mold
