@@ -217,7 +217,7 @@ ui <- page_navbar(
           selectInput("map_date", "Date column *",
                       choices = c("— select after import —" = ""), width = "100%"),
           selectInput("map_time", "Time column (if separate from date)",
-                      choices = c("None" = ""), width = "100%"),
+                      choices = c("— None —" = ""), width = "100%"),
           selectInput("map_timezone", "Timezone",
                       choices  = c("UTC", "Europe/Oslo", "Europe/Stockholm",
                                    "Europe/Copenhagen", "Europe/Berlin", "Europe/London"),
@@ -225,15 +225,15 @@ ui <- page_navbar(
 
           h6(class = "text-uppercase text-muted small mb-1 mt-3", "Sensor"),
           selectInput("map_sensor", "Sensor ID column",
-                      choices = c("None" = ""), width = "100%"),
+                      choices = c("— None —" = ""), width = "100%"),
           selectInput("map_port", "Port column (appended to sensor ID)",
-                      choices = c("None" = ""), width = "100%"),
+                      choices = c("— None —" = ""), width = "100%"),
 
           h6(class = "text-uppercase text-muted small mb-1 mt-3", "Measurements"),
-          selectInput("map_temp", "Temperature",       choices = c("None" = ""), width = "100%"),
-          selectInput("map_rhum", "Relative Humidity", choices = c("None" = ""), width = "100%"),
-          selectInput("map_wood", "Wood Moisture",     choices = c("None" = ""), width = "100%"),
-          selectInput("map_ohm",  "Ohm",               choices = c("None" = ""), width = "100%")
+          selectInput("map_temp", "Temperature",       choices = c("— None —" = ""), width = "100%"),
+          selectInput("map_rhum", "Relative Humidity", choices = c("— None —" = ""), width = "100%"),
+          selectInput("map_wood", "Wood Moisture",     choices = c("— None —" = ""), width = "100%"),
+          selectInput("map_ohm",  "Ohm",               choices = c("— None —" = ""), width = "100%")
         ),
 
         # ── Date completion ──
@@ -247,7 +247,7 @@ ui <- page_navbar(
           conditionalPanel(
             "input.do_complete == true",
             selectInput("map_site_id", "Site ID column (optional grouping)",
-                        choices = c("None" = ""), width = "100%"),
+                        choices = c("— None —" = ""), width = "100%"),
             selectInput("complete_timeframe", "Resolution",
                         choices  = c("Hourly" = "hour", "Daily" = "day",
                                      "Weekly" = "week", "Monthly" = "month"),
@@ -391,6 +391,9 @@ ui <- page_navbar(
                                   "CSV2 (semicolon)"  = "csv2",
                                   "Excel (.xlsx)"     = "xlsx"),
                       width = "100%"),
+          textInput("dl_filename", "Filename (without extension)",
+                    value = paste0("mycotools_", format(Sys.time(), "%Y-%m-%d-%H-%M")),
+                    width = "100%"),
           downloadButton("btn_download", "Download Processed Data",
                          class = "btn-primary w-100 mt-2")
         )
@@ -489,7 +492,7 @@ server <- function(input, output, session) {
       rv$processed_data <- NULL
 
       # Populate column selectors on Configure tab
-      col_choices <- c("None" = "", setNames(names(data), names(data)))
+      col_choices <- c("— None —" = "", setNames(names(data), names(data)))
       for (id in c("map_date", "map_time", "map_sensor", "map_port",
                    "map_temp", "map_rhum", "map_wood", "map_ohm", "map_site_id")) {
         updateSelectInput(session, id, choices = col_choices)
@@ -1111,8 +1114,10 @@ server <- function(input, output, session) {
 
   output$btn_download <- downloadHandler(
     filename = function() {
-      ext <- switch(input$dl_format, "xlsx" = ".xlsx", ".csv")
-      paste0("mycotools_", Sys.Date(), ext)
+      ext  <- switch(input$dl_format, "xlsx" = ".xlsx", ".csv")
+      base <- trimws(input$dl_filename)
+      if (!nzchar(base)) base <- paste0("mycotools_", format(Sys.time(), "%Y-%m-%d-%H-%M"))
+      paste0(base, ext)
     },
     content = function(file) {
       req(rv$processed_data)
