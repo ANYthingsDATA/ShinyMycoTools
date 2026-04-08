@@ -76,12 +76,12 @@ MIX_COLS <- c(
 
 ALL_GEN_COLS <- c(MEASURE_COLS, MIX_COLS)
 
-# Colour scale for MYCOindex heatmap: white → yellow → orange → red
+# Colour scale for MYCOindex heatmap: dark green → light green → yellow → red
 MIX_COLORSCALE <- list(
-  list(0,   "#F9FBE7"),
-  list(0.01, "#F9A825"),
-  list(0.5, "#E65100"),
-  list(1,   "#B71C1C")
+  list(0,    "#2E7D32"),   # 0   — dark green (no risk)
+  list(0.25, "#81C784"),   # 0.25 — light green (low risk)
+  list(0.5,  "#FDD835"),   # 0.5  — yellow (moderate risk)
+  list(1,    "#C62828")    # 1    — red (high risk)
 )
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -228,6 +228,12 @@ ui <- page_navbar(
                       choices = c("— None —" = ""), width = "100%"),
           selectInput("map_port", "Port column (appended to sensor ID)",
                       choices = c("— None —" = ""), width = "100%"),
+          conditionalPanel(
+            condition = "input.map_sensor == ''",
+            textInput("manual_sensor_id", "Manual sensor label",
+                      placeholder = "e.g. Sensor_01 — used when no column is selected",
+                      width = "100%")
+          ),
 
           h6(class = "text-uppercase text-muted small mb-1 mt-3", "Measurements"),
           selectInput("map_temp", "Temperature",       choices = c("— None —" = ""), width = "100%"),
@@ -564,14 +570,14 @@ server <- function(input, output, session) {
         if (nzchar(input$map_time)) {
           data <- define_variables_datetime(
             data,
-            input_date = !!sym(input$map_date),
-            input_time = !!sym(input$map_time),
+            input_date = input$map_date,
+            input_time = input$map_time,
             tz = input$map_timezone
           )
         } else {
           data <- define_variables_date(
             data,
-            input_date = !!sym(input$map_date),
+            input_date = input$map_date,
             tz = input$map_timezone
           )
         }
@@ -590,6 +596,9 @@ server <- function(input, output, session) {
               input_sensor = !!sym(input$map_sensor)
             )
           }
+        } else if (nzchar(trimws(input$manual_sensor_id))) {
+          # No sensor column — assign a constant label to all rows
+          data <- dplyr::mutate(data, gen_sensorID = trimws(input$manual_sensor_id))
         }
 
         # ── 3. Measurement columns ──────────────────────────────────

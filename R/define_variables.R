@@ -66,7 +66,7 @@ define_variables <- function(data,
   if (!missing(input_wood)) {
     x <- data %>%
       dplyr::mutate(
-        {{ output_wood }} := as.double({{ input_wood }})
+        {{ output_wood }} := .parse_numeric({{ input_wood }})
       )
   }
   # if(!is.null(input_ohm)) {
@@ -350,6 +350,13 @@ define_variables_sensorID <- function(data,
 #   }
 # }
 
+# Internal helper: parse numeric, handling both "." and "," as decimal separator.
+# Works on character, factor, or already-numeric vectors.
+.parse_numeric <- function(x) {
+  if (is.numeric(x)) return(x)
+  as.double(gsub(",", ".", as.character(x)))
+}
+
 #####
 ## Temperature
 #####
@@ -380,7 +387,7 @@ define_variables_temp <- function(data,
   if (!missing(input_temp)) {
     data %>%
       dplyr::mutate(
-        {{ output_temp }} := as.double({{ input_temp }})
+        {{ output_temp }} := .parse_numeric({{ input_temp }})
       )
   } else {
     stop("No temperature column to define is specified")
@@ -393,7 +400,7 @@ define_variables_temp <- function(data,
 #   if (!missing(input_temp)) {
 #     data %>%
 #       dplyr::mutate(
-#         {{ output_temp }} := as.double({{ input_temp }})
+#         {{ output_temp }} := .parse_numeric({{ input_temp }})
 #       )
 #   } else {
 #     stop("No temperature column to define is specified")
@@ -430,7 +437,7 @@ define_variables_rhum <- function(data,
   if (!missing(input_rhum)) {
     data %>%
       dplyr::mutate(
-        {{ output_rhum }} := as.double({{ input_rhum }})
+        {{ output_rhum }} := .parse_numeric({{ input_rhum }})
       )
   } else {
     stop("No relative humidity column to define is specified")
@@ -443,7 +450,7 @@ define_variables_rhum <- function(data,
 #   if (!missing(input_rhum)) {
 #     data %>%
 #       dplyr::mutate(
-#         {{ output_rhum }} := as.double({{ input_rhum }})
+#         {{ output_rhum }} := .parse_numeric({{ input_rhum }})
 #       )
 #   } else {
 #     stop("No relative humidity column to define is specified")
@@ -480,7 +487,7 @@ define_variables_wood <- function(data,
   if (!missing(input_wood)) {
     data %>%
       dplyr::mutate(
-        {{ output_wood }} := as.double({{ input_wood }})
+        {{ output_wood }} := .parse_numeric({{ input_wood }})
       )
   } else {
     stop("No wood moisture column to define is specified")
@@ -493,7 +500,7 @@ define_variables_wood <- function(data,
 #   if (!missing(input_wood)) {
 #     data %>%
 #       dplyr::mutate(
-#         {{ output_wood }} := as.double({{ input_wood }})
+#         {{ output_wood }} := .parse_numeric({{ input_wood }})
 #       )
 #   } else {
 #     stop("No wood moisture column to define is specified")
@@ -530,7 +537,7 @@ define_variables_ohm <- function(data,
   if (!missing(input_ohm)) {
     data %>%
       dplyr::mutate(
-        {{ output_ohm }} := as.double({{ input_ohm }})
+        {{ output_ohm }} := .parse_numeric({{ input_ohm }})
       )
   } else {
     stop("No Ohm value column to define is specified")
@@ -543,7 +550,7 @@ define_variables_ohm <- function(data,
 #   if (!missing(input_ohm)) {
 #     data %>%
 #       dplyr::mutate(
-#         {{ output_ohm }} := as.double({{ input_ohm }})
+#         {{ output_ohm }} := .parse_numeric({{ input_ohm }})
 #       )
 #   } else {
 #     stop("No Ohm value column to defined is specified")
