@@ -39,10 +39,10 @@ make_complete_date <- function(data,
   }
 
   interval <- switch(timeframe,
-                     hour = hours(1),
-                     day = days(1),
-                     week = weeks(1),
-                     month = months(1))
+                     hour  = "1 hour",
+                     day   = "1 day",
+                     week  = "1 week",
+                     month = "1 month")
 
   # All column name arguments are plain character strings — convert to syms
   date_sym <- rlang::sym(input_date)
@@ -52,6 +52,9 @@ make_complete_date <- function(data,
   if (!is.null(input_sensor_id))  group_syms <- c(group_syms,    list(rlang::sym(input_sensor_id)))
   if (!is.null(input_sensor_ports)) group_syms <- c(group_syms,  list(rlang::sym(input_sensor_ports)))
 
+  # Compute per-group min/max, then generate a sequence per row (rowwise),
+  # then unnest — avoids seq() receiving a vector of dates when there are
+  # multiple groups (which causes "to must be of length 1").
   x <- data %>%
     group_by(!!!group_syms) %>%
     summarise(
@@ -60,8 +63,11 @@ make_complete_date <- function(data,
       .groups = "drop"
     ) %>%
     filter(!is.na(min_date) & !is.na(max_date) & is.finite(min_date) & is.finite(max_date)) %>%
-    complete(!!!group_syms, !!date_sym := seq(min_date, max_date, by = interval)) %>%
-    ungroup()
+    rowwise() %>%
+    mutate(!!date_sym := list(seq(min_date, max_date, by = interval))) %>%
+    ungroup() %>%
+    select(-min_date, -max_date) %>%
+    tidyr::unnest(cols = !!date_sym)
 
   return(x)
 }
