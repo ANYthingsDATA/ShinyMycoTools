@@ -2,6 +2,8 @@
 
 A Shiny web application for processing and visualising indoor climate and moisture sensor data. Built for [Mycoteam](https://mycoteam.no) by [ANYthings](https://anythings.no).
 
+> **Proprietary software.** Copyright © 2024 ANYthings v/ Anders B. Nygaard and Mycoteam AS. All rights reserved. See [LICENSE](LICENSE).
+
 ## What it does
 
 ShinyMycoTools takes raw logger data from indoor climate sensors and produces a standardised, analysis-ready dataset with computed risk indices. The workflow is:
@@ -115,6 +117,10 @@ rsconnect::writeManifest()
 
 Then commit and push `manifest.json`.
 
+## License
+
+Proprietary — Copyright © 2024 ANYthings v/ Anders B. Nygaard and Mycoteam AS. All rights reserved. See [LICENSE](LICENSE) for terms.
+
 ## Built by
 
-[ANYthings](https://anythings.no) — data science and epidemiological consulting by Anders Benteson Nygaard.
+[ANYthings](https://anythings.no) v/ Anders B. Nygaard — data science and epidemiological consulting.
