@@ -29,8 +29,12 @@ source("R/make_mycoindex_wood.R")
 options(shiny.maxRequestSize = 100 * 1024^2)
 
 # ── THEME ─────────────────────────────────────────────────────────────────────
+# Mycoteam brand colors
+BRAND_PRIMARY   <- "#57A19F"   # Mycoteam teal — primary buttons, navbar, active states
+BRAND_SECONDARY <- "#C9CC64"   # Mycoteam yellow-green — accents, highlights
+
 # ANYthings brand system — see brand identity docs for full spec
-BRAND_BLACK     <- "#1A1A1A"   # ANYthings Black — headings, navbar
+BRAND_BLACK     <- "#1A1A1A"   # ANYthings Black — headings
 BRAND_SIGNAL    <- "#E03C31"   # Signal Red — key callouts, alerts (use sparingly)
 BRAND_BLUE      <- "#0B3D91"   # System Blue — links, secondary emphasis
 BRAND_DARK_GREY <- "#333333"   # Body text, secondary headings
@@ -40,13 +44,13 @@ BRAND_NEAR_WHITE <- "#F5F5F5"  # Alternate row backgrounds, subtle fills
 
 app_theme <- bs_theme(
   version   = 5,
-  primary   = BRAND_BLACK,
-  secondary = BRAND_DARK_GREY,
+  primary   = BRAND_PRIMARY,
+  secondary = BRAND_SECONDARY,
   danger    = BRAND_SIGNAL,
   info      = BRAND_BLUE,
   bg        = "#FFFFFF",
   fg        = BRAND_DARK_GREY,
-  "navbar-bg"    = BRAND_BLACK,
+  "navbar-bg"    = BRAND_PRIMARY,
   "navbar-color" = "#FFFFFF",
   "border-color" = BRAND_LIGHT_GREY,
   "card-border-color" = BRAND_LIGHT_GREY,
@@ -339,6 +343,9 @@ ui <- page_navbar(
 
         # Sensor checkboxes — populated dynamically
         uiOutput("dash_sensor_ui"),
+
+        # Sensor rename inputs — populated dynamically
+        uiOutput("sensor_rename_ui"),
 
         hr(),
 
@@ -732,6 +739,42 @@ server <- function(input, output, session) {
     )
   })
 
+  output$sensor_rename_ui <- renderUI({
+    req(rv$processed_data)
+    d <- rv$processed_data
+    if (!"gen_sensorID" %in% names(d)) return(NULL)
+
+    sensors <- sort(unique(as.character(d$gen_sensorID[!is.na(d$gen_sensorID)])))
+    if (!length(sensors)) return(NULL)
+
+    tags$details(
+      tags$summary(
+        class = "small text-muted mt-1 mb-1",
+        style = "cursor:pointer; user-select:none",
+        icon("tag", class = "me-1"), "Rename sensors"
+      ),
+      lapply(sensors, function(s) {
+        input_id <- paste0("slbl_", gsub("[^a-zA-Z0-9]", "_", s))
+        div(class = "mb-1",
+            textInput(input_id, label = NULL, value = s,
+                      placeholder = s, width = "100%"))
+      })
+    )
+  })
+
+  sensor_labels <- reactive({
+    req(rv$processed_data)
+    d <- rv$processed_data
+    if (!"gen_sensorID" %in% names(d)) return(NULL)
+
+    sensors <- sort(unique(as.character(d$gen_sensorID[!is.na(d$gen_sensorID)])))
+    labels <- vapply(sensors, function(s) {
+      val <- input[[paste0("slbl_", gsub("[^a-zA-Z0-9]", "_", s))]]
+      if (is.null(val) || !nzchar(trimws(val))) s else trimws(val)
+    }, character(1))
+    setNames(labels, sensors)
+  })
+
   observeEvent(input$dash_select_all, {
     req(rv$processed_data)
     if ("gen_sensorID" %in% names(rv$processed_data)) {
@@ -780,6 +823,13 @@ server <- function(input, output, session) {
     if ("gen_sensorID" %in% names(d) && length(input$dash_sensors) > 0) {
       d <- filter(d, gen_sensorID %in% input$dash_sensors)
     }
+
+    # Apply custom sensor labels
+    lbl <- sensor_labels()
+    if (!is.null(lbl) && "gen_sensorID" %in% names(d)) {
+      d$gen_sensorID <- lbl[as.character(d$gen_sensorID)]
+    }
+
     d
   })
 

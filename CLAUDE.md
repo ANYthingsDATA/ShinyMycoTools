@@ -45,7 +45,10 @@ Steps execute sequentially when **Run Processing** is clicked:
 5. `make_mycoindex_mold/temp/wood()` → `MIx_mold`, `MIx_temp`, `MIx_wood` (values: 0, 0.25/0.2, 0.5/0.4, 1)
 6. `add_date_seasons()` → `gen_season`, `gen_year_season`, `gen_isoweek`, `gen_isoyear`, month columns
 
-**Important:** all `define_variables_*` and `make_*` functions use tidy evaluation (`{{ }}`). In Shiny, dynamic column names are passed with `!!sym(input$col_name)`. Where the column must be a bare name inside `rlang::inject()`, use `rlang::sym("col_name")`.
+**Important — tidy evaluation:**
+- `define_variables_*` and `make_mycoindex_*` use `{{ }}` inside `dplyr::mutate()`. In Shiny, pass dynamic column names as `!!sym(input$col_name)` — R's lazy evaluation means the bare name is captured by `{{ }}` before dplyr resolves it in the data mask.
+- `make_complete_date()` accepts **plain character column names** (not symbols). Pass strings directly: `input_date = "gen_date"`, `input_sensor_id = "gen_sensorID"`. No `rlang::inject()` needed.
+- Never use `{{ }}` outside a data-masked verb (`mutate`, `filter`, `summarise`, etc.) — bare column references outside those contexts cause "object not found" errors.
 
 ## R/ Functions
 
@@ -60,14 +63,59 @@ Steps execute sequentially when **Run Processing** is clicked:
 
 ## Branding
 
-Colours are placeholders at the top of `app.R`:
+This is an ANYthings client deliverable — full ANYthings branding applies.
 
-```r
-BRAND_PRIMARY   <- "#1B5E20"   # TODO: replace with ANYthings/Mycoteam primary
-BRAND_SECONDARY <- "#2E7D32"   # TODO: replace with brand secondary
-```
+### Colors
 
-The `app_theme` `bs_theme()` call and `MIX_COLORSCALE` (heatmap colour ramp) may also need updating.
+Defined as constants at the top of `app.R`. Use these values:
+
+**Mycoteam brand (primary UI)**
+
+| Role | Name | Hex |
+|------|------|-----|
+| Primary — navbar, buttons, active | Mycoteam Teal | `#57A19F` |
+| Accent — highlights, badges | Mycoteam Yellow-Green | `#C9CC64` |
+
+**ANYthings system palette**
+
+| Role | Name | Hex |
+|------|------|-----|
+| Headings | ANYthings Black | `#1A1A1A` |
+| Background | White | `#FFFFFF` |
+| Alerts (sparingly) | Signal Red | `#E03C31` |
+| Links / data viz | System Blue | `#0B3D91` |
+| Body text | Dark Grey | `#333333` |
+| Captions / muted | Medium Grey | `#767676` |
+| Borders / rules | Light Grey | `#D9D9D9` |
+| Alt row backgrounds | Near White | `#F5F5F5` |
+
+Signal Red is for errors and alerts only — not decorative. The MYCOindex heatmap uses a functional risk scale (white → yellow → orange → red) — do not replace with brand colors.
+
+### Typography
+
+Web/Shiny font stack:
+- **Sans-serif (UI):** Inter (Google Fonts) — headings, labels, body
+- **Monospace (code/data):** JetBrains Mono — inline code, verbatim output
+
+Load Inter via `bslib::bs_theme(base_font = bslib::font_google("Inter"))`.
+
+### Shiny / bslib
+
+- Layout: `bslib::page_navbar()` with `card()`-based content — already in use
+- White card backgrounds, minimal borders, generous padding
+- Tables: `DT::datatable()` with light grey header (`#F5F5F5`), thin `#D9D9D9` gridlines
+- No gradients, drop shadows, or decorative color fills
+
+### Logo
+
+Files go in `www/`. Two variants:
+
+| File | Use |
+|------|-----|
+| `any_logo_white_back_v3.png` | Horizontal — navbar, header |
+| `square_any_logo_white_back_v3.png` | Square — favicon, app icon |
+
+Always use the PNG files directly — never re-render, crop, recolor, or add effects. Use the horizontal variant in the navbar. For dark backgrounds use the logo as-is (white container form — do not invert).
 
 ## Posit Connect Cloud Deployment
 
