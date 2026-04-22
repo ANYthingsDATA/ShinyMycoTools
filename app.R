@@ -34,13 +34,14 @@ BRAND_PRIMARY   <- "#57A19F"   # Mycoteam teal — primary buttons, navbar, acti
 BRAND_SECONDARY <- "#C9CC64"   # Mycoteam yellow-green — accents, highlights
 
 # ANYthings brand system — see brand identity docs for full spec
-BRAND_BLACK     <- "#1A1A1A"   # ANYthings Black — headings
-BRAND_SIGNAL    <- "#E03C31"   # Signal Red — key callouts, alerts (use sparingly)
-BRAND_BLUE      <- "#0B3D91"   # System Blue — links, secondary emphasis
-BRAND_DARK_GREY <- "#333333"   # Body text, secondary headings
-BRAND_MID_GREY  <- "#767676"   # Captions, metadata, muted text
+BRAND_BLACK      <- "#1A1A1A"  # ANYthings Black — headings, top accent stripe
+BRAND_SIGNAL     <- "#E03C31"  # Signal Red — key callouts, alerts (use sparingly)
+BRAND_BLUE       <- "#0B3D91"  # System Blue — links, secondary emphasis, Plotly primary series
+BRAND_DARK_GREY  <- "#333333"  # Body text, secondary headings
+BRAND_MID_GREY   <- "#767676"  # Captions, metadata, muted text
 BRAND_LIGHT_GREY <- "#D9D9D9"  # Rules, borders, table gridlines
-BRAND_NEAR_WHITE <- "#F5F5F5"  # Alternate row backgrounds, subtle fills
+BRAND_NEAR_WHITE <- "#F5F5F5"  # Page background, alternate row backgrounds
+BRAND_OFF_WHITE  <- "#FAFAFA"  # Card backgrounds, alternate surfaces
 
 app_theme <- bs_theme(
   version   = 5,
@@ -84,6 +85,22 @@ MIX_COLORSCALE <- list(
   list(1,    "#C62828")    # 1    — red (high risk)
 )
 
+# Data visualisation palette (NYCTA-inspired) — cycles by sensor index
+NYCTA_PALETTE <- c(
+  "#0B3D91",  # System Blue
+  "#E03C31",  # Signal Red
+  "#00933C",  # Transit Green
+  "#FF6319",  # Line Orange
+  "#6E267B"   # Line Purple
+)
+
+# Per-index colours for the MYCOindex distribution overlay
+MIX_HIST_COLORS <- c(
+  MIx_mold = "#0B3D91",
+  MIx_temp = "#FF6319",
+  MIx_wood = "#00933C"
+)
+
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 empty_plotly <- function(msg = "No data to display") {
   plot_ly() %>%
@@ -101,8 +118,210 @@ col_label <- function(col_id, lookup = ALL_GEN_COLS) {
   if (length(nm)) nm[[1]] else col_id
 }
 
+# Standard Plotly layout — Inter font, JetBrains Mono ticks, #D9D9D9 gridlines
+apply_plotly_theme <- function(p,
+                               xaxis_title = "",
+                               yaxis_title = "",
+                               hovermode   = "x unified",
+                               show_legend = TRUE) {
+  plotly::layout(p,
+    paper_bgcolor = "rgba(0,0,0,0)",
+    plot_bgcolor  = "rgba(0,0,0,0)",
+    font = list(family = "Inter, Helvetica Neue, Arial",
+                size   = 10, color = "#555555"),
+    xaxis = list(
+      title    = xaxis_title,
+      showgrid = TRUE, gridcolor = "#D9D9D9", gridwidth = 0.5,
+      zeroline = FALSE, linecolor = "#333333", linewidth = 1,
+      tickfont = list(family = "JetBrains Mono", size = 9)
+    ),
+    yaxis = list(
+      title    = yaxis_title,
+      showgrid = TRUE, gridcolor = "#D9D9D9", gridwidth = 0.5,
+      zeroline = FALSE, linecolor = "#333333", linewidth = 1,
+      tickfont = list(family = "JetBrains Mono", size = 9)
+    ),
+    hovermode = hovermode,
+    showlegend = show_legend,
+    legend = list(orientation = "h", y = -0.18, font = list(size = 9)),
+    margin = list(t = 20, r = 20, b = 70, l = 54)
+  )
+}
+
+# Cycle NYCTA palette by 1-indexed sensor slot
+nycta_color <- function(i) {
+  NYCTA_PALETTE[((i - 1L) %% length(NYCTA_PALETTE)) + 1L]
+}
+
+# Dashboard stat tile — label / value / unit / sub
+stat_tile <- function(label, value, unit = NULL, sub = NULL, alert = FALSE) {
+  val_color <- if (isTRUE(alert)) BRAND_SIGNAL else BRAND_BLACK
+  div(
+    class = "stat-tile",
+    div(class = "stat-tile-label", label),
+    div(
+      class = "stat-tile-value",
+      style = paste0("color: ", val_color, ";"),
+      value,
+      if (!is.null(unit)) tags$span(class = "stat-tile-unit", unit)
+    ),
+    if (!is.null(sub)) div(class = "stat-tile-sub", sub)
+  )
+}
+
 # ── UI ────────────────────────────────────────────────────────────────────────
+# Global CSS overrides — NASA/NYCTA aesthetic: zero border-radius, section labels,
+# sidebar nav, DT styling, stat tiles, upload dropzone, active-tab treatments.
+app_css <- HTML('
+  /* Top accent stripe (3px black bar above the navbar) */
+  body::before {
+    content: ""; display: block;
+    position: fixed; top: 0; left: 0; right: 0; height: 3px;
+    background: #1A1A1A; z-index: 9999;
+  }
+  body { background: #F5F5F5; padding-top: 3px; }
+
+  /* Remove all border-radius (NASA aesthetic) */
+  .card, .nav-tabs .nav-link, .nav-pills .nav-link, .btn, select, input,
+  .form-control, .form-select, .input-group, .input-group > *,
+  .dataTables_wrapper, .shiny-notification, .alert, .badge,
+  .shiny-input-container .form-control,
+  .bslib-value-box, .bslib-card { border-radius: 0 !important; }
+
+  /* Section labels (9px uppercase, mid grey) */
+  .section-label, .small-caps-label {
+    font-size: 9px; font-weight: 700; color: #767676;
+    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;
+  }
+
+  /* Sidebar h6 section labels */
+  .bslib-sidebar-layout .sidebar h6.text-uppercase {
+    font-size: 9px !important; font-weight: 700; color: #767676;
+    letter-spacing: 0.08em; margin: 14px 0 6px;
+  }
+
+  /* Main navbar: active tab white bg / teal text */
+  .navbar-nav .nav-link.active,
+  .navbar-nav .show > .nav-link {
+    background: #FFFFFF !important;
+    color: #57A19F !important;
+    font-weight: 700;
+  }
+  .navbar-nav .nav-link { color: #FFFFFF; }
+
+  /* Sub-tabs inside cards: black active, white text */
+  .nav-tabs .nav-link.active {
+    background: #1A1A1A !important; color: #FFFFFF !important;
+    border-color: #1A1A1A !important; border-radius: 0 !important;
+    font-weight: 700;
+  }
+  .nav-tabs .nav-link {
+    border-radius: 0 !important; font-size: 11px; color: #555555;
+  }
+
+  /* DT tables */
+  table.dataTable thead th {
+    background: #F5F5F5 !important; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.05em; font-size: 10px;
+  }
+  table.dataTable tbody tr:nth-child(even) td { background: #FAFAFA; }
+  table.dataTable td, table.dataTable th {
+    border-bottom: 0.5px solid #D9D9D9 !important;
+  }
+  table.dataTable.table-sm td, table.dataTable.table-sm th {
+    padding: 6px 8px; font-size: 11px;
+  }
+
+  /* bslib card headers */
+  .card-header {
+    font-size: 11px; font-weight: 700; background: #FFFFFF;
+    border-bottom: 1px solid #D9D9D9; text-transform: uppercase;
+    letter-spacing: 0.05em; color: #1A1A1A;
+  }
+  .card { background: #FFFFFF; }
+
+  /* Scrollbars */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: #F5F5F5; }
+  ::-webkit-scrollbar-thumb { background: #D9D9D9; }
+
+  /* Stat tiles (dashboard) */
+  .stat-tile {
+    border: 1px solid #D9D9D9; background: #FFFFFF; padding: 14px 16px;
+    height: 100%;
+  }
+  .stat-tile-label {
+    font-size: 9px; font-weight: 700; color: #767676;
+    text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 6px;
+  }
+  .stat-tile-value {
+    font-size: 26px; font-weight: 700; letter-spacing: -0.02em;
+    line-height: 1; color: #1A1A1A;
+  }
+  .stat-tile-unit { font-size: 11px; color: #555555; margin-left: 4px; }
+  .stat-tile-sub  { font-size: 9px; color: #767676; margin-top: 4px; }
+
+  /* Upload dropzone — wraps fileInput */
+  .upload-dropzone .form-group {
+    border: 1.5px dashed #D9D9D9; background: #F5F5F5;
+    padding: 18px 12px; text-align: center; margin-bottom: 0;
+  }
+  .upload-dropzone .form-group label { color: #767676; font-size: 11px; }
+
+  /* Outline and filled badges for upload summary */
+  .badge-outline {
+    display: inline-block; font-size: 9px; font-weight: 700;
+    padding: 3px 8px; text-transform: uppercase; letter-spacing: 0.05em;
+    background: #F5F5F5; color: #333333; border: 1px solid #D9D9D9;
+    border-radius: 0; margin-right: 6px;
+  }
+  .badge-filled {
+    display: inline-block; font-size: 9px; font-weight: 700;
+    padding: 3px 8px; text-transform: uppercase; letter-spacing: 0.05em;
+    background: #57A19F; color: #FFFFFF; border-radius: 0; margin-right: 6px;
+  }
+
+  /* Animated processing bar */
+  .shiny-progress .progress-bar { background: #57A19F !important; }
+
+  /* Success alert tuned to design green */
+  .alert-success {
+    background: #E8F5E9; border: 1px solid #A5D6A7; color: #2E7D32;
+    border-radius: 0 !important;
+  }
+
+  /* Column reference table (Download tab) */
+  .colref-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .colref-table tr { border-bottom: 0.5px solid #D9D9D9; }
+  .colref-table tbody tr:nth-child(odd) td  { background: #FAFAFA; }
+  .colref-table tbody tr:nth-child(even) td { background: #FFFFFF; }
+  .colref-table td { padding: 7px 10px; vertical-align: middle; }
+  .colref-table td.col-name {
+    font-family: "JetBrains Mono", monospace; color: #0B3D91; font-size: 11px;
+  }
+  .colref-table td.col-type {
+    font-family: "JetBrains Mono", monospace; color: #555555; font-size: 10px;
+  }
+  .colref-table thead th {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #767676; background: #F5F5F5;
+    padding: 8px 10px; text-align: left; border-bottom: 1px solid #D9D9D9;
+  }
+
+  /* Footer */
+  .app-footer .foot-left {
+    font-size: 9px; font-weight: 700; color: #1A1A1A;
+    letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  .app-footer .foot-right { font-size: 9px; color: #767676; }
+  .app-footer .foot-count {
+    font-family: "JetBrains Mono", monospace; font-size: 9px; color: #767676;
+    margin-left: 10px;
+  }
+')
+
 ui <- page_navbar(
+  id      = "main_nav",
   # TODO: replace tags$strong("MycoTools") with:
   #   tags$span(
   #     tags$img(src = "mycoteam_logo.png", height = "28px", alt = "Mycoteam",
@@ -115,22 +334,26 @@ ui <- page_navbar(
   title   = tags$strong("MycoTools", style = "color: #FFFFFF; letter-spacing: -0.3px;"),
   theme   = app_theme,
   inverse = TRUE,
+  header  = tags$head(
+    tags$link(rel = "icon", href = "square_any_logo_white_back_v3.png"),
+    tags$style(app_css)
+  ),
   footer  = div(
-    class = "d-flex align-items-center justify-content-between px-3 py-2",
-    style = paste0("border-top: 1px solid ", BRAND_LIGHT_GREY, ";",
-                   "background: #FFFFFF;"),
-    # Primary brand — Mycoteam logo (left / dominant)
-    # TODO: replace with: tags$img(src = "mycoteam_logo.png", height = "28px", alt = "Mycoteam")
-    tags$span(
-      style = paste0("font-weight: 700; font-size: 1rem; color: ", BRAND_BLACK, ";"),
-      "Mycoteam"
-    ),
-    # Secondary brand — ANYthings (right, smaller)
-    # TODO: replace with: tags$img(src = "any_logo_white_back_v3.png", height = "20px", alt = "ANYthings")
-    tags$span(
-      class = "small",
-      style = paste0("color: ", BRAND_MID_GREY, ";"),
-      "Built by ANYthings"
+    class = "app-footer d-flex align-items-center justify-content-between px-3 py-2",
+    style = "border-top: 1px solid #D9D9D9; background: #FFFFFF;",
+    # Primary brand — Mycoteam (left)
+    # TODO: replace the text span with:
+    #   tags$img(src = "mycoteam_logo.png", height = "20px", alt = "Mycoteam")
+    tags$span(class = "foot-left", "MYCOTEAM"),
+
+    # Right cluster: ANYthings credit + reactive row/col counter
+    div(
+      class = "d-flex align-items-center",
+      tags$span(class = "foot-right", "Built by ANYthings · MycoTools v1.0"),
+      # TODO: add ANYthings logo beside the credit line:
+      #   tags$img(src = "any_logo_white_back_v3.png", height = "20px",
+      #            alt = "ANYthings", style = "margin-left: 8px;")
+      tags$span(class = "foot-count", textOutput("footer_count", inline = TRUE))
     )
   ),
 
@@ -148,12 +371,16 @@ ui <- page_navbar(
       card(
         card_header(icon("file-import", class = "me-1"), "Import File"),
         card_body(
-          fileInput("file_upload", NULL,
-                    accept      = c(".csv", ".txt", ".xlsx", ".xls"),
-                    buttonLabel = "Browse…",
-                    placeholder = "CSV / Excel / TXT"),
+          div(class = "section-label", "Source File"),
+          div(class = "upload-dropzone",
+              fileInput("file_upload", "Drop CSV / Excel / TXT here",
+                        accept      = c(".csv", ".txt", ".xlsx", ".xls"),
+                        buttonLabel = "Browse…",
+                        placeholder = "No file selected")
+          ),
 
           hr(),
+          div(class = "section-label", "Parse Options"),
           selectInput("import_delim", "Delimiter",
                       choices  = c("Auto-detect" = "auto",
                                    "Comma  (,)"  = ",",
@@ -167,7 +394,8 @@ ui <- page_navbar(
           hr(),
           actionButton("btn_import", "Import",
                        icon  = icon("file-import"),
-                       class = "btn-primary w-100")
+                       class = "btn-primary w-100"),
+          uiOutput("import_status_ui")
         )
       ),
 
@@ -408,29 +636,40 @@ ui <- page_navbar(
       card(
         card_header(icon("book", class = "me-1"), "Generated Column Reference"),
         card_body(
-          tags$table(
-            class = "table table-sm table-striped",
-            tags$thead(tags$tr(
-              tags$th("Column"), tags$th("Type"), tags$th("Description")
-            )),
-            tags$tbody(
-              tags$tr(tags$td(code("gen_datetime")),    tags$td("POSIXct"), tags$td("Standardised datetime")),
-              tags$tr(tags$td(code("gen_date")),        tags$td("Date"),    tags$td("Date component")),
-              tags$tr(tags$td(code("gen_time")),        tags$td("chr"),     tags$td("Time HH:MM:SS")),
-              tags$tr(tags$td(code("gen_sensorID")),    tags$td("chr"),     tags$td("Sensor identifier")),
-              tags$tr(tags$td(code("gen_temp")),        tags$td("dbl"),     tags$td("Temperature (°C)")),
-              tags$tr(tags$td(code("gen_rhum")),        tags$td("dbl"),     tags$td("Relative humidity (%)")),
-              tags$tr(tags$td(code("gen_wood")),        tags$td("dbl"),     tags$td("Wood moisture (%)")),
-              tags$tr(tags$td(code("gen_ohm")),         tags$td("dbl"),     tags$td("Ohm value")),
-              tags$tr(tags$td(code("MIx_mold")),        tags$td("dbl"),     tags$td("Mold index (0 / 0.25 / 0.5 / 1)")),
-              tags$tr(tags$td(code("MIx_temp")),        tags$td("dbl"),     tags$td("Temperature index (0 / 0.2 / 0.4 / 1)")),
-              tags$tr(tags$td(code("MIx_wood")),        tags$td("dbl"),     tags$td("Wood index (0 / 0.25 / 0.5 / 1)")),
-              tags$tr(tags$td(code("gen_season")),      tags$td("chr"),     tags$td("Winter / Spring / Summer / Fall")),
-              tags$tr(tags$td(code("gen_year_season")), tags$td("chr"),     tags$td("e.g. '2024, Winter'")),
-              tags$tr(tags$td(code("gen_isoweek")),     tags$td("int"),     tags$td("ISO 8601 week number")),
-              tags$tr(tags$td(code("gen_isoyear")),     tags$td("int"),     tags$td("ISO year"))
+          local({
+            rows <- list(
+              c("gen_datetime",    "POSIXct", "Standardised datetime"),
+              c("gen_date",        "Date",    "Date component"),
+              c("gen_time",        "chr",     "Time HH:MM:SS"),
+              c("gen_sensorID",    "chr",     "Sensor identifier"),
+              c("gen_temp",        "dbl",     "Temperature (°C)"),
+              c("gen_rhum",        "dbl",     "Relative humidity (%)"),
+              c("gen_wood",        "dbl",     "Wood moisture (%)"),
+              c("gen_ohm",         "dbl",     "Ohm value"),
+              c("MIx_mold",        "dbl",     "Mold index (0 / 0.25 / 0.5 / 1)"),
+              c("MIx_temp",        "dbl",     "Temperature index (0 / 0.2 / 0.4 / 1)"),
+              c("MIx_wood",        "dbl",     "Wood index (0 / 0.25 / 0.5 / 1)"),
+              c("gen_season",      "chr",     "Winter / Spring / Summer / Fall"),
+              c("gen_year_season", "chr",     "e.g. '2024, Winter'"),
+              c("gen_isoweek",     "int",     "ISO 8601 week number"),
+              c("gen_isoyear",     "int",     "ISO year")
             )
-          )
+            tags$table(
+              class = "colref-table",
+              tags$thead(tags$tr(
+                tags$th("Column"), tags$th("Type"), tags$th("Description")
+              )),
+              tags$tbody(
+                lapply(rows, function(r) {
+                  tags$tr(
+                    tags$td(class = "col-name", r[[1]]),
+                    tags$td(class = "col-type", r[[2]]),
+                    tags$td(r[[3]])
+                  )
+                })
+              )
+            )
+          })
         )
       )
     )
@@ -449,6 +688,13 @@ server <- function(input, output, session) {
     raw_data       = NULL,
     processed_data = NULL
   )
+
+  # Reactive row/col footer counter — prefers processed, falls back to raw
+  output$footer_count <- renderText({
+    d <- rv$processed_data %||% rv$raw_data
+    if (is.null(d)) return("")
+    sprintf("%s rows × %s cols", format(nrow(d), big.mark = ","), ncol(d))
+  })
 
   # ════════════════════════════════════════════════════════════════
   # UPLOAD
@@ -525,11 +771,50 @@ server <- function(input, output, session) {
 
   output$upload_badge_ui <- renderUI({
     req(rv$raw_data)
-    tags$span(class = "badge bg-success",
-              icon("check", class = "me-1"),
-              sprintf("%s rows · %s cols",
-                      format(nrow(rv$raw_data), big.mark = ","),
-                      ncol(rv$raw_data)))
+    d <- rv$raw_data
+
+    # Outlined badges: cols, possible sensor count, date range (best-effort)
+    sensor_badge <- NULL
+    sensor_guess <- grep("sensor|id|logger", names(d), ignore.case = TRUE,
+                         value = TRUE)[1]
+    if (!is.na(sensor_guess)) {
+      n_sens <- length(unique(d[[sensor_guess]]))
+      sensor_badge <- tags$span(class = "badge-outline",
+                                sprintf("%s sensors", n_sens))
+    }
+
+    date_badge <- NULL
+    date_guess <- grep("date|time|datum|dato|timestamp", names(d),
+                       ignore.case = TRUE, value = TRUE)[1]
+    if (!is.na(date_guess)) {
+      parsed <- suppressWarnings(parsedate::parse_date(d[[date_guess]]))
+      if (any(!is.na(parsed))) {
+        rng <- range(parsed, na.rm = TRUE)
+        date_badge <- tags$span(
+          class = "badge-outline",
+          sprintf("%s → %s",
+                  format(as.Date(rng[1]), "%Y-%m-%d"),
+                  format(as.Date(rng[2]), "%Y-%m-%d"))
+        )
+      }
+    }
+
+    tagList(
+      tags$span(class = "badge-filled",
+                sprintf("%s rows", format(nrow(d), big.mark = ","))),
+      tags$span(class = "badge-outline", sprintf("%s cols", ncol(d))),
+      sensor_badge,
+      date_badge
+    )
+  })
+
+  output$import_status_ui <- renderUI({
+    req(rv$raw_data)
+    d <- rv$raw_data
+    div(class = "alert alert-success py-2 mt-3",
+        icon("circle-check", class = "me-1"),
+        sprintf("Imported %s rows × %s columns",
+                format(nrow(d), big.mark = ","), ncol(d)))
   })
 
   output$tbl_preview <- renderDT({
@@ -682,6 +967,9 @@ server <- function(input, output, session) {
                   format(nrow(data), big.mark = ","), ncol(data)),
           type = "message"
         )
+
+        # Auto-navigate to Dashboard (design spec)
+        nav_select("main_nav", "tab_dashboard")
 
       }, error = function(e) {
         showNotification(paste("Error:", conditionMessage(e)),
@@ -845,6 +1133,47 @@ server <- function(input, output, session) {
     d
   })
 
+  # ── Stat tiles ─────────────────────────────────────────────────────
+  output$dash_stat_tiles <- renderUI({
+    req(rv$processed_data)
+    d <- dash_data()
+
+    fmt_num <- function(x, digits = 1) {
+      if (!length(x) || all(is.na(x))) return("—")
+      formatC(round(x, digits), format = "f", digits = digits, big.mark = ",")
+    }
+
+    n_obs <- nrow(d)
+    mean_rh <- if ("gen_rhum" %in% names(d)) mean(d$gen_rhum, na.rm = TRUE) else NA_real_
+    peak_rh <- if ("gen_rhum" %in% names(d)) max(d$gen_rhum,  na.rm = TRUE) else NA_real_
+    peak_alert <- isTRUE(is.finite(peak_rh) && peak_rh >= 85)
+
+    n_highrisk <- if ("MIx_mold" %in% names(d)) {
+      sum(d$MIx_mold >= 0.5, na.rm = TRUE)
+    } else NA_integer_
+    risk_alert <- isTRUE(!is.na(n_highrisk) && n_highrisk > 0)
+
+    layout_columns(
+      col_widths = c(3, 3, 3, 3),
+      stat_tile("Observations",
+                format(n_obs, big.mark = ","),
+                sub = "rows in filter"),
+      stat_tile("Mean RH",
+                if (is.finite(mean_rh)) fmt_num(mean_rh, 1) else "—",
+                unit = "%",
+                sub = "relative humidity"),
+      stat_tile("Peak RH",
+                if (is.finite(peak_rh)) fmt_num(peak_rh, 1) else "—",
+                unit = "%",
+                sub = if (peak_alert) "≥ 85% threshold" else "within range",
+                alert = peak_alert),
+      stat_tile("High-risk periods",
+                if (!is.na(n_highrisk)) format(n_highrisk, big.mark = ",") else "—",
+                sub = "MIx_mold ≥ 0.5",
+                alert = risk_alert)
+    )
+  })
+
   # ── Dashboard placeholder / tabs ──
   output$dashboard_main_ui <- renderUI({
     if (is.null(rv$processed_data)) {
@@ -852,26 +1181,29 @@ server <- function(input, output, session) {
           icon("circle-info", class = "me-1"),
           "Process your data first (Configure tab) to enable the dashboard.")
     } else {
-      navset_card_tab(
-        nav_panel(
-          title = tagList(icon("chart-line"), " Time Series"),
-          plotlyOutput("plot_timeseries", height = "460px")
-        ),
-        nav_panel(
-          title = tagList(icon("table"), " Summary"),
-          DTOutput("tbl_summary")
-        ),
-        nav_panel(
-          title = tagList(icon("chart-bar"), " Distributions"),
-          layout_columns(
-            col_widths = c(6, 6),
-            plotlyOutput("plot_hist_primary", height = "380px"),
-            plotlyOutput("plot_hist_mix",     height = "380px")
+      tagList(
+        div(style = "margin-bottom: 14px;", uiOutput("dash_stat_tiles")),
+        navset_card_tab(
+          nav_panel(
+            title = tagList(icon("chart-line"), " Time Series"),
+            plotlyOutput("plot_timeseries", height = "460px")
+          ),
+          nav_panel(
+            title = tagList(icon("table"), " Summary"),
+            DTOutput("tbl_summary")
+          ),
+          nav_panel(
+            title = tagList(icon("chart-bar"), " Distributions"),
+            layout_columns(
+              col_widths = c(6, 6),
+              plotlyOutput("plot_hist_primary", height = "380px"),
+              plotlyOutput("plot_hist_mix",     height = "380px")
+            )
+          ),
+          nav_panel(
+            title = tagList(icon("border-all"), " Heatmap"),
+            plotlyOutput("plot_heatmap", height = "520px")
           )
-        ),
-        nav_panel(
-          title = tagList(icon("border-all"), " Heatmap"),
-          plotlyOutput("plot_heatmap", height = "500px")
         )
       )
     }
@@ -897,18 +1229,21 @@ server <- function(input, output, session) {
       return(empty_plotly("Select a variable in the sidebar"))
 
     has_sensor <- "gen_sensorID" %in% names(d)
+    sensors    <- if (has_sensor) sort(unique(as.character(d$gen_sensorID))) else NULL
     p <- plot_ly()
 
     for (var in vars) {
       lbl <- col_label(var)
 
       if (has_sensor) {
-        for (snsr in sort(unique(as.character(d$gen_sensorID)))) {
+        for (i in seq_along(sensors)) {
+          snsr <- sensors[i]
           dd <- filter(d, gen_sensorID == snsr) %>% arrange(.data[[x_col]])
           p  <- add_trace(p,
             x    = dd[[x_col]], y = dd[[var]],
             type = "scatter", mode = "lines",
             name = paste0(snsr, " — ", lbl),
+            line = list(color = nycta_color(i), width = 1.75),
             hovertemplate = paste0(
               "%{x}<br>", lbl, ": %{y:.3f}<extra>", snsr, "</extra>")
           )
@@ -916,19 +1251,14 @@ server <- function(input, output, session) {
       } else {
         dd <- arrange(d, .data[[x_col]])
         p  <- add_trace(p,
-          x = dd[[x_col]], y = dd[[var]],
-          type = "scatter", mode = "lines", name = lbl
+          x    = dd[[x_col]], y = dd[[var]],
+          type = "scatter", mode = "lines", name = lbl,
+          line = list(color = nycta_color(1), width = 1.75)
         )
       }
     }
 
-    p %>% layout(
-      xaxis     = list(title = ""),
-      yaxis     = list(title = "Value"),
-      hovermode = "x unified",
-      legend    = list(orientation = "h", y = -0.18),
-      margin    = list(b = 90)
-    )
+    apply_plotly_theme(p, xaxis_title = "", yaxis_title = col_label(y_var))
   })
 
   # ── Summary table ─────────────────────────────────────────────────
@@ -989,28 +1319,31 @@ server <- function(input, output, session) {
 
     lbl <- col_label(var)
 
-    if ("gen_sensorID" %in% names(d) &&
-        length(unique(na.omit(d$gen_sensorID))) > 1) {
+    p <- if ("gen_sensorID" %in% names(d) &&
+             length(unique(na.omit(d$gen_sensorID))) > 1) {
+
+      sensors <- sort(unique(as.character(na.omit(d$gen_sensorID))))
+      pal     <- setNames(vapply(seq_along(sensors), nycta_color, character(1)),
+                          sensors)
+
       plot_ly(d, x = ~.data[[var]],
-              color = ~as.character(gen_sensorID),
-              type = "histogram", nbinsx = 40, opacity = 0.75) %>%
-        layout(
-          barmode = "overlay",
-          xaxis   = list(title = lbl),
-          yaxis   = list(title = "Count"),
-          title   = list(text = paste("Distribution:", lbl), x = 0),
-          legend  = list(orientation = "h", y = -0.2)
-        )
+              color  = ~as.character(gen_sensorID),
+              colors = pal,
+              type = "histogram", nbinsx = 40, opacity = 0.85,
+              marker = list(line = list(color = "#FFFFFF", width = 0.5))) %>%
+        layout(barmode = "overlay")
+
     } else {
       plot_ly(d, x = ~.data[[var]], type = "histogram", nbinsx = 40,
-              marker = list(color = BRAND_PRIMARY,
-                            line  = list(color = "#fff", width = 0.5))) %>%
-        layout(
-          xaxis = list(title = lbl),
-          yaxis = list(title = "Count"),
-          title = list(text = paste("Distribution:", lbl), x = 0)
-        )
+              marker = list(color = nycta_color(1),
+                            line  = list(color = "#FFFFFF", width = 0.5)),
+              opacity = 0.85)
     }
+
+    apply_plotly_theme(p,
+      xaxis_title = lbl, yaxis_title = "Count",
+      hovermode = "closest"
+    )
   })
 
   # ── Histogram — MYCOindex ──────────────────────────────────────────
@@ -1021,26 +1354,34 @@ server <- function(input, output, session) {
 
     if (!length(avail)) return(empty_plotly("No MYCOindex columns available"))
 
-    pal <- c("#43A047", "#FB8C00", "#E53935")
-    p   <- plot_ly()
+    p <- plot_ly()
 
-    for (i in seq_along(avail)) {
+    for (key in avail) {
       p <- add_trace(p,
-        x       = d[[avail[i]]],
+        x       = d[[key]],
         type    = "histogram",
-        name    = col_label(avail[i]),
-        opacity = 0.75,
+        name    = col_label(key),
+        opacity = 0.85,
         nbinsx  = 10,
-        marker  = list(color = pal[i])
+        marker  = list(
+          color = MIX_HIST_COLORS[[key]] %||% nycta_color(1),
+          line  = list(color = "#FFFFFF", width = 0.5)
+        )
       )
     }
 
-    p %>% layout(
+    apply_plotly_theme(p,
+      xaxis_title = "MYCOindex (0–1)",
+      yaxis_title = "Count",
+      hovermode   = "closest"
+    ) %>% layout(
       barmode = "overlay",
-      xaxis   = list(title = "MYCOindex (0–1)", range = c(-0.05, 1.1)),
-      yaxis   = list(title = "Count"),
-      title   = list(text = "MYCOindex Distributions", x = 0),
-      legend  = list(orientation = "h", y = -0.2)
+      xaxis = list(
+        title    = "MYCOindex (0–1)", range = c(-0.05, 1.1),
+        showgrid = TRUE, gridcolor = "#D9D9D9", gridwidth = 0.5,
+        zeroline = FALSE, linecolor = "#333333", linewidth = 1,
+        tickfont = list(family = "JetBrains Mono", size = 9)
+      )
     )
   })
 
@@ -1059,6 +1400,14 @@ server <- function(input, output, session) {
 
     if (!has_date) return(empty_plotly("Date column not available"))
 
+    risk_note <- list(
+      text      = "0 = No risk · 0.25 = Low · 0.5 = Moderate · 1.0 = High/Critical",
+      showarrow = FALSE,
+      xref      = "paper", yref = "paper",
+      x = 0, y = -0.22, xanchor = "left",
+      font = list(family = "Inter", size = 9, color = "#767676")
+    )
+
     if (has_snsr) {
       heat_df <- d %>%
         filter(!is.na(gen_date)) %>%
@@ -1076,14 +1425,25 @@ server <- function(input, output, session) {
         type       = "heatmap",
         colorscale = MIX_COLORSCALE,
         zmin = 0, zmax = 1,
-        colorbar   = list(title     = list(text = lbl),
-                          tickvals  = c(0, 0.25, 0.5, 1)),
+        xgap = 0.5, ygap = 0.5,
+        colorbar   = list(
+          title     = list(text = lbl, font = list(size = 10)),
+          tickvals  = c(0, 0.25, 0.5, 1),
+          tickfont  = list(family = "JetBrains Mono", size = 9)
+        ),
         hovertemplate = paste0(
-          "<b>%{x|%Y-%m-%d}</b><br>Sensor: %{y}<br>", lbl, ": %{z:.2f}<extra></extra>")
+          "<b>%{x|%Y-%m-%d}</b><br>Sensor: %{y}<br>",
+          lbl, ": %{z:.2f}<extra></extra>")
       ) %>% layout(
-        xaxis = list(title = ""),
-        yaxis = list(title = "Sensor", autorange = "reversed"),
-        title = list(text = paste("Daily mean:", lbl), x = 0)
+        paper_bgcolor = "rgba(0,0,0,0)",
+        plot_bgcolor  = "rgba(0,0,0,0)",
+        font  = list(family = "Inter", size = 10, color = "#555555"),
+        xaxis = list(title = "",
+                     tickfont = list(family = "Inter", size = 9)),
+        yaxis = list(title = "", autorange = "reversed",
+                     tickfont = list(family = "Inter", size = 10)),
+        annotations = list(risk_note),
+        margin = list(t = 20, r = 20, b = 80, l = 80)
       )
 
     } else {
@@ -1094,16 +1454,23 @@ server <- function(input, output, session) {
         summarise(value = mean(.data[[idx]], na.rm = TRUE), .groups = "drop") %>%
         arrange(date)
 
-      plot_ly(trend, x = ~date, y = ~value,
+      p <- plot_ly(trend, x = ~date, y = ~value,
               type = "scatter", mode = "lines",
               fill = "tozeroy",
-              fillcolor = "rgba(27,94,32,0.15)",
-              line = list(color = BRAND_PRIMARY),
-              hovertemplate = "<b>%{x|%Y-%m-%d}</b><br>Value: %{y:.2f}<extra></extra>") %>%
+              fillcolor = "rgba(11,61,145,0.12)",
+              line = list(color = nycta_color(1), width = 1.75),
+              hovertemplate = "<b>%{x|%Y-%m-%d}</b><br>Value: %{y:.2f}<extra></extra>")
+
+      apply_plotly_theme(p, xaxis_title = "", yaxis_title = lbl,
+                         hovermode = "x unified", show_legend = FALSE) %>%
         layout(
-          xaxis = list(title = ""),
-          yaxis = list(title = lbl, range = c(0, 1.05)),
-          title = list(text = paste("Daily mean:", lbl), x = 0)
+          yaxis = list(
+            title    = lbl, range = c(0, 1.05),
+            showgrid = TRUE, gridcolor = "#D9D9D9", gridwidth = 0.5,
+            zeroline = FALSE, linecolor = "#333333", linewidth = 1,
+            tickfont = list(family = "JetBrains Mono", size = 9)
+          ),
+          annotations = list(risk_note)
         )
     }
   })
