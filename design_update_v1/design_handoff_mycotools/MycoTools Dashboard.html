@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MycoTools — Data Platform</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%;overflow:hidden}
+body{font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#F5F5F5;color:#333333;-webkit-font-smoothing:antialiased;font-size:13px}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:#F5F5F5}::-webkit-scrollbar-thumb{background:#D9D9D9}
+select,input[type=text],input[type=date],input[type=number]{font-family:inherit;font-size:12px;border:1px solid #D9D9D9;background:#fff;color:#1A1A1A;padding:5px 8px;outline:none;border-radius:0;width:100%}
+select:focus,input:focus{border-color:#57A19F}
+input[type=checkbox]{accent-color:#57A19F;width:13px;height:13px;cursor:pointer}
+label{cursor:pointer}
+button{font-family:inherit;cursor:pointer;border:none;border-radius:0}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" src="charts.jsx"></script>
+<script type="text/babel">
+
+// ── Demo data generator ───────────────────────────────────────────────────────
+function generateDemoData() {
+  const sensors = ['S-01 Indoor', 'S-02 Wall Cavity', 'S-03 Crawl Space'];
+  let seed = 9273;
+  const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 0xFFFFFFFF; };
+  const rows = [];
+  const start = new Date(2024, 9, 1); // Oct 1 2024
+  for (let day = 0; day < 90; day++) {
+    const d = new Date(start); d.setDate(d.getDate() + day);
+    const dt = d.toISOString().slice(0,10);
+    const prog = day / 89;
+    sensors.forEach((s, si) => {
+      const nr = rand();
+      // Temperature: autumn cooling, occasional cold spells
+      const temp = Math.max(0.5, 12 - prog*9 + (rand()-0.5)*5 + (si===2?2:si===1?-1:0));
+      // RH: rising into winter, wall cavity dampest
+      const rhBoost = si===1?14:si===2?6:0;
+      const rhum = Math.min(100, Math.max(40, 63+prog*18+(rand()-0.5)*18+rhBoost+
+        (day>55&&day<75?12:0)));
+      // Wood moisture
+      const wood = Math.max(10, Math.min(48, 17+prog*12+(rand()-0.5)*7+(si===1?6:si===2?4:0)));
+      // Ohm (inverse proxy for moisture)
+      const ohm = Math.max(5, 120 - wood*2.8 + (rand()-0.5)*15);
+      // MYCOindex
+      const mixMold = rhum>=95?1:rhum>=85?0.5:rhum>=75?0.25:0;
+      const mixTemp = temp>=14?1:temp>=8?0.4:temp>=4?0.2:0;
+      const mixWood = wood>=30?1:wood>=25?0.5:wood>=20?0.25:0;
+      rows.push({ date:dt, sensor:s,
+        temp:+temp.toFixed(1), rhum:+rhum.toFixed(1),
+        wood:+wood.toFixed(1), ohm:+ohm.toFixed(0),
+        mixMold, mixTemp, mixWood });
+    });
+  }
+  return rows;
+}
+
+const DEMO_DATA = generateDemoData();
+
+// ── Color tokens ──────────────────────────────────────────────────────────────
+const T = {
+  black:'#1A1A1A', white:'#FFFFFF', teal:'#57A19F', yg:'#C9CC64',
+  charcoal:'#333333', steel:'#555555', midGrey:'#767676',
+  lightGrey:'#D9D9D9', nearWhite:'#F5F5F5', offWhite:'#FAFAFA',
+  red:'#E03C31', blue:'#0B3D91',
+};
+
+// ── Primitives ────────────────────────────────────────────────────────────────
+const sectionLabel = (txt) => (
+  <div style={{fontSize:9,fontWeight:700,color:T.midGrey,textTransform:'uppercase',
+    letterSpacing:'0.08em',marginBottom:6}}>{txt}</div>
+);
+
+function Card({children,style={}}) {
+  return <div style={{background:T.white,border:`1px solid ${T.lightGrey}`,
+    padding:'14px 16px',...style}}>{children}</div>;
+}
+
+function StatTile({label,value,unit,sub,alert}) {
+  return (
+    <Card style={{flex:1}}>
+      <div style={{fontSize:9,fontWeight:700,color:T.midGrey,textTransform:'uppercase',
+        letterSpacing:'0.07em',marginBottom:6}}>{label}</div>
+      <div style={{display:'flex',alignItems:'baseline',gap:4}}>
+        <span style={{fontSize:26,fontWeight:700,letterSpacing:'-0.02em',
+          color:alert?T.red:T.black,lineHeight:1}}>{value}</span>
+        {unit&&<span style={{fontSize:11,color:T.steel}}>{unit}</span>}
+      </div>
+      {sub&&<div style={{fontSize:9,color:T.midGrey,marginTop:4}}>{sub}</div>}
+    </Card>
+  );
+}
+
+function Btn({children,onClick,primary,small,danger,disabled,full}) {
+  const bg = disabled?T.lightGrey:primary?T.teal:danger?T.red:T.black;
+  const fg = disabled?T.steel:T.white;
+  return (
+    <button onClick={disabled?undefined:onClick} style={{
+      background:bg,color:fg,fontFamily:'inherit',
+      fontSize:small?11:12,fontWeight:700,
+      padding:small?'5px 12px':'7px 18px',
+      letterSpacing:'0.02em',
+      width:full?'100%':undefined,
+      opacity:disabled?0.6:1,cursor:disabled?'not-allowed':'pointer',
+    }}>{children}</button>
+  );
+}
+
+function Badge({children,color=T.nearWhite,fg=T.charcoal,border=false}) {
+  return <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',
+    textTransform:'uppercase',letterSpacing:'0.05em',
+    background:color,color:fg,display:'inline-block',
+    border:border?`1px solid ${T.lightGrey}`:'none'}}>{children}</span>;
+}
+
+function Sel({label,value,onChange,options,style={}}) {
+  return (
+    <div style={{marginBottom:10,...style}}>
+      {label&&<div style={{fontSize:10,fontWeight:600,color:T.charcoal,marginBottom:3}}>{label}</div>}
+      <select value={value} onChange={e=>onChange(e.target.value)}>
+        {options.map(o=><option key={o.v||o} value={o.v||o}>{o.l||o}</option>)}
+      </select>
+    </div>
+  );
+}
+
+// ── Navbar ────────────────────────────────────────────────────────────────────
+const TABS = [
+  {id:'upload',   label:'Upload'},
+  {id:'configure',label:'Configure'},
+  {id:'dashboard',label:'Dashboard'},
+  {id:'download', label:'Download'},
+];
+
+function NavBar({tab, setTab, fileImported, dataProcessed}) {
+  const canConfigure = fileImported;
+  const canDashboard = dataProcessed;
+  const canDownload  = dataProcessed;
+  const enabled = {upload:true,configure:canConfigure,dashboard:canDashboard,download:canDownload};
+
+  return (
+    <div style={{height:48,background:T.teal,display:'flex',alignItems:'stretch',
+      flexShrink:0,borderBottom:`3px solid #3d8a88`}}>
+      {/* Brand */}
+      <div style={{display:'flex',alignItems:'center',padding:'0 20px',
+        borderRight:`1px solid rgba(255,255,255,0.2)`,flexShrink:0}}>
+        <span style={{color:T.white,fontWeight:700,fontSize:15,letterSpacing:'-0.01em'}}>
+          MycoTools
+        </span>
+        <span style={{color:'rgba(255,255,255,0.55)',fontSize:10,marginLeft:8,
+          letterSpacing:'0.05em',fontWeight:500}}>DATA PLATFORM</span>
+      </div>
+      {/* Tabs */}
+      <div style={{display:'flex',alignItems:'stretch'}}>
+        {TABS.map(t=>{
+          const active = tab===t.id;
+          const dis = !enabled[t.id];
+          return (
+            <button key={t.id} onClick={()=>!dis&&setTab(t.id)} style={{
+              background:active?T.white:'transparent',
+              color:active?T.teal:dis?'rgba(255,255,255,0.4)':T.white,
+              fontFamily:'inherit',fontSize:12,fontWeight:active?700:500,
+              padding:'0 18px',border:'none',
+              borderRight:`1px solid rgba(255,255,255,0.15)`,
+              cursor:dis?'not-allowed':'pointer',letterSpacing:'0.01em',
+              transition:'background 0.1s',
+            }}>{t.label}</button>
+          );
+        })}
+      </div>
+      {/* Spacer + brand tag */}
+      <div style={{flex:1}}/>
+      <div style={{display:'flex',alignItems:'center',padding:'0 16px',
+        borderLeft:`1px solid rgba(255,255,255,0.2)`}}>
+        <span style={{color:'rgba(255,255,255,0.6)',fontSize:9,letterSpacing:'0.06em',
+          fontWeight:600}}>ANYthings for Mycoteam</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Upload Tab ────────────────────────────────────────────────────────────────
+function UploadView({fileImported,setFileImported}) {
+  const [filename,setFilename] = React.useState('');
+  const [delim,setDelim] = React.useState('auto');
+  const [skip,setSkip] = React.useState(0);
+  const [sheet,setSheet] = React.useState(1);
+  const [demoLoaded,setDemoLoaded] = React.useState(false);
+
+  const handleImport = () => {
+    setFileImported(true); setDemoLoaded(true);
+  };
+  const handleDemo = () => {
+    setFilename('mycotools_demo_2024-Q4.csv');
+    setFileImported(true); setDemoLoaded(true);
+  };
+
+  return (
+    <div style={{display:'grid',gridTemplateColumns:'300px 1fr',gap:16,padding:16,
+      height:'100%',overflow:'auto'}}>
+      {/* Left: controls */}
+      <div style={{display:'flex',flexDirection:'column',gap:12}}>
+        <Card>
+          {sectionLabel('Import File')}
+          <div style={{border:`1.5px dashed ${T.lightGrey}`,padding:'18px 12px',
+            textAlign:'center',marginBottom:12,background:T.nearWhite}}>
+            <div style={{fontSize:11,color:T.steel,marginBottom:8}}>CSV / Excel / TXT</div>
+            <input type="file" accept=".csv,.xlsx,.xls,.txt"
+              onChange={e=>setFilename(e.target.files[0]?.name||'')}
+              style={{fontSize:11,width:'auto'}}/>
+            {filename&&<div style={{fontSize:10,color:T.teal,marginTop:6,
+              fontFamily:"'JetBrains Mono',monospace"}}>{filename}</div>}
+          </div>
+          <Sel label="Delimiter" value={delim} onChange={setDelim}
+            options={[{v:'auto',l:'Auto-detect'},{v:',',l:'Comma (,)'},{v:';',l:'Semicolon (;)'},{v:'\t',l:'Tab'}]}/>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
+            <div>
+              <div style={{fontSize:10,fontWeight:600,color:T.charcoal,marginBottom:3}}>Skip lines</div>
+              <input type="number" value={skip} onChange={e=>setSkip(e.target.value)} min={0}/>
+            </div>
+            <div>
+              <div style={{fontSize:10,fontWeight:600,color:T.charcoal,marginBottom:3}}>Excel sheet</div>
+              <input type="number" value={sheet} onChange={e=>setSheet(e.target.value)} min={1}/>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <Btn onClick={handleImport} primary full disabled={!filename}>Import</Btn>
+          </div>
+          <div style={{margin:'12px 0',borderTop:`1px solid ${T.lightGrey}`}}/>
+          <div style={{fontSize:10,color:T.midGrey,marginBottom:8}}>No file? Use the built-in demo dataset.</div>
+          <Btn onClick={handleDemo} full>Load demo dataset</Btn>
+        </Card>
+        {demoLoaded&&(
+          <div style={{background:'#E8F5E9',border:`1px solid #A5D6A7`,
+            padding:'8px 12px',fontSize:11,color:'#2E7D32',display:'flex',alignItems:'center',gap:6}}>
+            <span style={{fontWeight:700}}>✓</span>
+            <span>Data imported — go to <strong>Configure</strong></span>
+          </div>
+        )}
+      </div>
+      {/* Right: raw preview */}
+      <Card style={{overflow:'auto',padding:'12px 14px'}}>
+        {sectionLabel('Raw Preview')}
+        {demoLoaded ? (
+          <pre style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,
+            lineHeight:1.6,color:T.charcoal,whiteSpace:'pre-wrap'}}>
+{`date,sensor,gen_temp,gen_rhum,gen_wood,gen_ohm
+2024-10-01,S-01 Indoor,11.4,64.3,18.2,89
+2024-10-01,S-02 Wall Cavity,9.8,78.1,24.5,65
+2024-10-01,S-03 Crawl Space,13.2,70.4,22.1,72
+2024-10-02,S-01 Indoor,10.9,66.7,18.8,86
+2024-10-02,S-02 Wall Cavity,9.2,80.3,25.1,62
+2024-10-02,S-03 Crawl Space,12.8,72.1,22.6,70
+2024-10-03,S-01 Indoor,10.1,68.9,19.3,83
+2024-10-03,S-02 Wall Cavity,8.7,82.4,25.9,59
+2024-10-03,S-03 Crawl Space,12.3,74.5,23.4,68
+2024-10-04,S-01 Indoor,9.8,70.2,19.7,81
+...
+[90 days × 3 sensors = 270 rows]`}
+          </pre>
+        ) : (
+          <div style={{color:T.midGrey,fontSize:11,padding:'20px 0'}}>
+            Select a file or load the demo dataset to preview raw content.
+          </div>
+        )}
+        {demoLoaded&&(
+          <div style={{marginTop:12,display:'flex',gap:8,flexWrap:'wrap'}}>
+            <Badge color={T.teal} fg={T.white}>270 rows</Badge>
+            <Badge color={T.nearWhite} fg={T.charcoal} border>6 columns</Badge>
+            <Badge color={T.nearWhite} fg={T.charcoal} border>3 sensors</Badge>
+            <Badge color={T.nearWhite} fg={T.charcoal} border>90 days · Oct–Dec 2024</Badge>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ── Configure Tab ─────────────────────────────────────────────────────────────
+function ConfigureView({dataProcessed, setDataProcessed, setTab}) {
+  const [processing,setProcessing] = React.useState(false);
+  const [done,setDone] = React.useState(dataProcessed);
+  const [mapDate,setMapDate] = React.useState('date');
+  const [mapSensor,setMapSensor] = React.useState('sensor');
+  const [mapTemp,setMapTemp] = React.useState('gen_temp');
+  const [mapRhum,setMapRhum] = React.useState('gen_rhum');
+  const [mapWood,setMapWood] = React.useState('gen_wood');
+  const [mapOhm,setMapOhm] = React.useState('gen_ohm');
+  const [tz,setTz] = React.useState('Europe/Oslo');
+  const [doIndexes,setDoIndexes] = React.useState(['mold','temp','wood']);
+  const [moldLow,setMoldLow]=React.useState(75);const[moldMid,setMoldMid]=React.useState(85);const[moldHigh,setMoldHigh]=React.useState(95);
+  const [tempLow,setTempLow]=React.useState(4);const[tempMid,setTempMid]=React.useState(8);const[tempHigh,setTempHigh]=React.useState(14);
+  const [woodLow,setWoodLow]=React.useState(20);const[woodMid,setWoodMid]=React.useState(25);const[woodHigh,setWoodHigh]=React.useState(30);
+
+  const toggleIndex = k => setDoIndexes(prev=>prev.includes(k)?prev.filter(x=>x!==k):[...prev,k]);
+  const colOpts = [{v:'date',l:'date'},{v:'sensor',l:'sensor'},{v:'gen_temp',l:'gen_temp'},
+    {v:'gen_rhum',l:'gen_rhum'},{v:'gen_wood',l:'gen_wood'},{v:'gen_ohm',l:'gen_ohm'}];
+  const noneOpts = [{v:'',l:'— None —'},...colOpts];
+
+  const runProcess = () => {
+    setProcessing(true);
+    setTimeout(()=>{ setProcessing(false); setDone(true); setDataProcessed(true); setTab('dashboard'); },1600);
+  };
+
+  return (
+    <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16,padding:16,
+      height:'100%',overflow:'auto'}}>
+      {/* Left: config panels */}
+      <div style={{display:'flex',flexDirection:'column',gap:12}}>
+        <Card>
+          {sectionLabel('Date / Time')}
+          <Sel label="Date column *" value={mapDate} onChange={setMapDate} options={colOpts}/>
+          <Sel label="Timezone" value={tz} onChange={setTz}
+            options={['Europe/Oslo','Europe/Stockholm','Europe/Copenhagen','UTC','Europe/London'].map(v=>({v,l:v}))}/>
+        </Card>
+        <Card>
+          {sectionLabel('Sensor & Measurements')}
+          <Sel label="Sensor ID column" value={mapSensor} onChange={setMapSensor} options={noneOpts}/>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+            <Sel label="Temperature" value={mapTemp} onChange={setMapTemp} options={noneOpts}/>
+            <Sel label="Rel. Humidity" value={mapRhum} onChange={setMapRhum} options={noneOpts}/>
+            <Sel label="Wood Moisture" value={mapWood} onChange={setMapWood} options={noneOpts}/>
+            <Sel label="Ohm" value={mapOhm} onChange={setMapOhm} options={noneOpts}/>
+          </div>
+        </Card>
+        <Card>
+          {sectionLabel('MYCOindex Thresholds')}
+          <div style={{marginBottom:8}}>
+            <div style={{fontSize:10,fontWeight:600,color:T.charcoal,marginBottom:4}}>
+              Indexes to compute
+            </div>
+            {[['mold','Mold (from RH)'],['temp','Temperature'],['wood','Wood Moisture']].map(([k,l])=>(
+              <label key={k} style={{display:'flex',alignItems:'center',gap:6,fontSize:11,
+                marginBottom:4,color:T.charcoal}}>
+                <input type="checkbox" checked={doIndexes.includes(k)} onChange={()=>toggleIndex(k)}/>
+                {l}
+              </label>
+            ))}
+          </div>
+          <div style={{borderTop:`1px solid ${T.lightGrey}`,paddingTop:8}}>
+            <div style={{fontSize:10,fontWeight:600,color:T.charcoal,marginBottom:6}}>Mold — RH (%)</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:8}}>
+              {[['Low',moldLow,setMoldLow],['Mid',moldMid,setMoldMid],['High',moldHigh,setMoldHigh]].map(([l,v,s])=>(
+                <div key={l}>
+                  <div style={{fontSize:9,color:T.midGrey,marginBottom:2}}>{l}</div>
+                  <input type="number" value={v} onChange={e=>s(+e.target.value)} min={0} max={100}/>
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:10,fontWeight:600,color:T.charcoal,marginBottom:6}}>Temperature (°C)</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:8}}>
+              {[['Low',tempLow,setTempLow],['Mid',tempMid,setTempMid],['High',tempHigh,setTempHigh]].map(([l,v,s])=>(
+                <div key={l}>
+                  <div style={{fontSize:9,color:T.midGrey,marginBottom:2}}>{l}</div>
+                  <input type="number" value={v} onChange={e=>s(+e.target.value)}/>
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:10,fontWeight:600,color:T.charcoal,marginBottom:6}}>Wood Moisture (%)</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6}}>
+              {[['Low',woodLow,setWoodLow],['Mid',woodMid,setWoodMid],['High',woodHigh,setWoodHigh]].map(([l,v,s])=>(
+                <div key={l}>
+                  <div style={{fontSize:9,color:T.midGrey,marginBottom:2}}>{l}</div>
+                  <input type="number" value={v} onChange={e=>s(+e.target.value)}/>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      </div>
+      {/* Right: run */}
+      <div style={{display:'flex',flexDirection:'column',gap:12}}>
+        <Card>
+          {sectionLabel('Run Processing')}
+          <Btn onClick={runProcess} primary full disabled={processing}>
+            {processing?'Processing…':'Run Processing'}
+          </Btn>
+          {processing&&(
+            <div style={{marginTop:12}}>
+              <div style={{fontSize:10,color:T.teal,marginBottom:6}}>Processing data…</div>
+              <div style={{height:4,background:T.lightGrey,position:'relative',overflow:'hidden'}}>
+                <div style={{position:'absolute',left:'-40%',width:'40%',height:'100%',
+                  background:T.teal,animation:'slide 1s linear infinite'}}/>
+              </div>
+              <style>{`@keyframes slide{to{left:100%}}`}</style>
+            </div>
+          )}
+          {done&&!processing&&(
+            <div style={{marginTop:10,background:'#E8F5E9',border:'1px solid #A5D6A7',
+              padding:'7px 10px',fontSize:11,color:'#2E7D32',display:'flex',gap:6}}>
+              <span style={{fontWeight:700}}>✓</span>
+              <span>Processed: 270 rows × 9 columns — navigating to Dashboard</span>
+            </div>
+          )}
+        </Card>
+        {/* Preview table */}
+        <Card style={{overflow:'auto',flex:1}}>
+          {sectionLabel('Output Preview (first 8 rows)')}
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:10}}>
+              <thead>
+                <tr>{['date','sensor','gen_temp','gen_rhum','gen_wood','gen_ohm','MIx_mold','MIx_temp','MIx_wood'].map(h=>(
+                  <th key={h} style={{background:T.nearWhite,padding:'5px 8px',textAlign:'left',
+                    borderBottom:`1px solid ${T.lightGrey}`,fontWeight:700,
+                    fontFamily:"'JetBrains Mono',monospace",fontSize:9,whiteSpace:'nowrap'}}>{h}</th>
+                ))}</tr>
+              </thead>
+              <tbody>
+                {DEMO_DATA.slice(0,8).map((r,i)=>(
+                  <tr key={i} style={{background:i%2?T.offWhite:T.white}}>
+                    {[r.date,r.sensor,r.temp,r.rhum,r.wood,r.ohm,r.mixMold,r.mixTemp,r.mixWood].map((v,j)=>(
+                      <td key={j} style={{padding:'4px 8px',borderBottom:`0.5px solid ${T.lightGrey}`,
+                        fontFamily:j===0||j===1?'inherit':"'JetBrains Mono',monospace",
+                        fontSize:j===0||j===1?10:9,whiteSpace:'nowrap'}}>{v}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ── Dashboard Tab ─────────────────────────────────────────────────────────────
+const ALL_SENSORS = ['S-01 Indoor','S-02 Wall Cavity','S-03 Crawl Space'];
+const DATES = [...new Set(DEMO_DATA.map(r=>r.date))].sort();
+const VAR_OPTS = [
+  {v:'rhum', l:'Relative Humidity (%)', c:CC.s[0]},
+  {v:'temp', l:'Temperature (°C)',      c:CC.s[1]},
+  {v:'wood', l:'Wood Moisture (%)',      c:CC.s[2]},
+  {v:'ohm',  l:'Ohm',                   c:CC.s[3]},
+];
+const MIX_OPTS = [
+  {v:'mixMold',l:'MYCOindex — Mold'},
+  {v:'mixTemp',l:'MYCOindex — Temp'},
+  {v:'mixWood',l:'MYCOindex — Wood'},
+];
+
+function DashboardView() {
+  const [sensors,setSensors] = React.useState(ALL_SENSORS);
+  const [dateStart,setDateStart] = React.useState(DATES[0]);
+  const [dateEnd,setDateEnd] = React.useState(DATES[DATES.length-1]);
+  const [primaryVar,setPrimaryVar] = React.useState('rhum');
+  const [heatIdx,setHeatIdx] = React.useState('mixMold');
+  const [subTab,setSubTab] = React.useState('timeseries');
+  const [sensorRename,setSensorRename] = React.useState({});
+
+  const toggle = s => setSensors(prev=>prev.includes(s)?prev.filter(x=>x!==s):[...prev,s]);
+
+  const filtered = React.useMemo(()=>DEMO_DATA.filter(r=>
+    sensors.includes(r.sensor) && r.date>=dateStart && r.date<=dateEnd
+  ),[sensors,dateStart,dateEnd]);
+
+  // Stats
+  const stats = React.useMemo(()=>{
+    const vals = k => filtered.map(r=>r[k]).filter(v=>v!=null);
+    const mean = arr => arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:null;
+    return {
+      nRows: filtered.length,
+      meanRH: mean(vals('rhum')),
+      maxRH: Math.max(...vals('rhum'),0),
+      highRisk: filtered.filter(r=>r.mixMold>=0.5).length,
+    };
+  },[filtered]);
+
+  const varInfo = VAR_OPTS.find(v=>v.v===primaryVar) || VAR_OPTS[0];
+
+  // Sub-tab button
+  const SubBtn = ({id,label}) => (
+    <button onClick={()=>setSubTab(id)} style={{
+      background:subTab===id?T.black:T.white,
+      color:subTab===id?T.white:T.steel,
+      fontFamily:'inherit',fontSize:11,fontWeight:subTab===id?700:400,
+      padding:'6px 14px',border:`1px solid ${T.lightGrey}`,
+      borderBottom:subTab===id?`1px solid ${T.black}`:'none',
+      cursor:'pointer',letterSpacing:'0.02em',marginRight:-1,
+    }}>{label}</button>
+  );
+
+  // Summary table
+  const summaryRows = React.useMemo(()=>ALL_SENSORS.map(s=>{
+    const rows = filtered.filter(r=>r.sensor===s);
+    const mean = (k) => rows.length?(rows.reduce((a,r)=>a+(r[k]||0),0)/rows.length).toFixed(2):'-';
+    const mx = k => rows.length?Math.max(...rows.map(r=>r[k]||0)).toFixed(1):'-';
+    const mn = k => rows.length?Math.min(...rows.map(r=>r[k]||0)).toFixed(1):'-';
+    return { s, n:rows.length,
+      tempM:mean('temp'), tempMx:mx('temp'), tempMn:mn('temp'),
+      rhumM:mean('rhum'), rhumMx:mx('rhum'), rhumMn:mn('rhum'),
+      woodM:mean('wood'), woodMx:mx('wood'), woodMn:mn('wood'),
+      highRisk:rows.filter(r=>r.mixMold>=0.5).length,
+    };
+  }),[filtered]);
+
+  return (
+    <div style={{display:'flex',height:'100%',overflow:'hidden'}}>
+      {/* Sidebar */}
+      <div style={{width:240,background:T.white,borderRight:`1px solid ${T.lightGrey}`,
+        padding:'14px 14px',overflowY:'auto',flexShrink:0}}>
+        {sectionLabel('Sensors')}
+        {ALL_SENSORS.map(s=>(
+          <label key={s} style={{display:'flex',alignItems:'center',gap:6,
+            marginBottom:6,fontSize:11,color:sensors.includes(s)?T.charcoal:T.midGrey}}>
+            <input type="checkbox" checked={sensors.includes(s)} onChange={()=>toggle(s)}/>
+            {s}
+          </label>
+        ))}
+        <div style={{display:'flex',gap:8,marginTop:2,marginBottom:12}}>
+          <button onClick={()=>setSensors([...ALL_SENSORS])}
+            style={{fontSize:9,color:T.teal,background:'none',border:'none',padding:0,cursor:'pointer',fontWeight:600}}>
+            All
+          </button>
+          <button onClick={()=>setSensors([])}
+            style={{fontSize:9,color:T.midGrey,background:'none',border:'none',padding:0,cursor:'pointer'}}>
+            None
+          </button>
+        </div>
+
+        <div style={{borderTop:`1px solid ${T.lightGrey}`,paddingTop:12,marginBottom:12}}/>
+        {sectionLabel('Date Range')}
+        <div style={{marginBottom:6}}>
+          <div style={{fontSize:9,color:T.midGrey,marginBottom:3}}>Start</div>
+          <input type="date" value={dateStart} onChange={e=>setDateStart(e.target.value)}
+            min={DATES[0]} max={dateEnd}/>
+        </div>
+        <div style={{marginBottom:8}}>
+          <div style={{fontSize:9,color:T.midGrey,marginBottom:3}}>End</div>
+          <input type="date" value={dateEnd} onChange={e=>setDateEnd(e.target.value)}
+            min={dateStart} max={DATES[DATES.length-1]}/>
+        </div>
+        <button onClick={()=>{setDateStart(DATES[0]);setDateEnd(DATES[DATES.length-1]);}}
+          style={{fontSize:9,color:T.midGrey,background:'none',border:'none',padding:0,cursor:'pointer'}}>
+          Reset to full range
+        </button>
+
+        <div style={{borderTop:`1px solid ${T.lightGrey}`,paddingTop:12,margin:'12px 0'}}/>
+        <Sel label="Primary variable" value={primaryVar} onChange={setPrimaryVar}
+          options={VAR_OPTS.map(v=>({v:v.v,l:v.l}))}/>
+
+        <div style={{marginTop:4}}/>
+        <Sel label="Heatmap: MYCOindex" value={heatIdx} onChange={setHeatIdx}
+          options={MIX_OPTS.map(v=>({v:v.v,l:v.l}))}/>
+      </div>
+
+      {/* Main content */}
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:T.nearWhite}}>
+        {/* Stat bar */}
+        <div style={{display:'flex',gap:12,padding:'12px 16px',
+          background:T.white,borderBottom:`1px solid ${T.lightGrey}`,flexShrink:0}}>
+          <StatTile label="Observations" value={stats.nRows.toLocaleString()} sub={`${sensors.length} sensors · filtered`}/>
+          <StatTile label="Mean RH" value={stats.meanRH?stats.meanRH.toFixed(1):'—'} unit="%"/>
+          <StatTile label="Peak RH" value={stats.maxRH?stats.maxRH.toFixed(1):'—'} unit="%" alert={stats.maxRH>=85}/>
+          <StatTile label="High-risk periods" value={stats.highRisk} sub="MIx_mold ≥ 0.5" alert={stats.highRisk>0}/>
+        </div>
+
+        {/* Sub-tabs */}
+        <div style={{display:'flex',padding:'10px 16px 0',background:T.white,
+          borderBottom:`1px solid ${T.lightGrey}`,flexShrink:0}}>
+          <SubBtn id="timeseries" label="Time Series"/>
+          <SubBtn id="summary"    label="Summary"/>
+          <SubBtn id="distrib"    label="Distributions"/>
+          <SubBtn id="heatmap"    label="Heatmap"/>
+        </div>
+
+        {/* Content area */}
+        <div style={{flex:1,overflow:'auto',padding:16}}>
+          {subTab==='timeseries'&&(
+            <Card>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.black}}>{varInfo.l}</div>
+                <div style={{display:'flex',gap:6}}>
+                  {sensors.map((s,i)=>(
+                    <Badge key={s} color={CC.s[ALL_SENSORS.indexOf(s)%CC.s.length]} fg={T.white}>{s.split(' ')[0]}</Badge>
+                  ))}
+                </div>
+              </div>
+              <SVGLineChart data={filtered} sensors={sensors} variable={primaryVar} varLabel={varInfo.l} width={800} height={300}/>
+            </Card>
+          )}
+
+          {subTab==='summary'&&(
+            <Card style={{overflow:'auto'}}>
+              {sectionLabel('Descriptive Statistics by Sensor')}
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+                <thead>
+                  <tr>
+                    {['Sensor','n','Temp mean','Temp min','Temp max','RH mean','RH min','RH max','Wood mean','High-risk days'].map((h,i)=>(
+                      <th key={h} style={{background:T.nearWhite,padding:'6px 10px',
+                        textAlign:i===0?'left':'right',borderBottom:`1px solid ${T.lightGrey}`,
+                        fontSize:10,fontWeight:700,whiteSpace:'nowrap'}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {summaryRows.map((r,i)=>(
+                    <tr key={r.s} style={{background:i%2?T.offWhite:T.white}}>
+                      <td style={{padding:'6px 10px',borderBottom:`0.5px solid ${T.lightGrey}`,fontWeight:600}}>{r.s}</td>
+                      {[r.n,r.tempM,r.tempMn,r.tempMx,r.rhumM,r.rhumMn,r.rhumMx,r.woodM].map((v,j)=>(
+                        <td key={j} style={{padding:'6px 10px',borderBottom:`0.5px solid ${T.lightGrey}`,
+                          textAlign:'right',fontFamily:"'JetBrains Mono',monospace",fontSize:10}}>{v}</td>
+                      ))}
+                      <td style={{padding:'6px 10px',borderBottom:`0.5px solid ${T.lightGrey}`,
+                        textAlign:'right',fontFamily:"'JetBrains Mono',monospace",fontSize:10,
+                        color:r.highRisk>0?T.red:T.steel,fontWeight:r.highRisk>0?700:400}}>{r.highRisk}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{fontSize:9,color:T.midGrey,marginTop:8}}>
+                High-risk days: MIx_mold ≥ 0.5. Temperature and RH in °C and %.
+              </div>
+            </Card>
+          )}
+
+          {subTab==='distrib'&&(
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+              <Card>
+                <div style={{fontSize:11,fontWeight:700,marginBottom:10}}>Distribution: {varInfo.l}</div>
+                <SVGHistogram data={filtered} sensors={sensors} variable={primaryVar}
+                  varLabel={varInfo.l} color={varInfo.c} width={380} height={220}/>
+              </Card>
+              <Card>
+                <div style={{fontSize:11,fontWeight:700,marginBottom:10}}>MYCOindex Distributions</div>
+                <SVGMIxHistogram data={filtered} sensors={sensors} width={380} height={220}/>
+              </Card>
+            </div>
+          )}
+
+          {subTab==='heatmap'&&(
+            <Card>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.black}}>
+                  {MIX_OPTS.find(m=>m.v===heatIdx)?.l||heatIdx} — Daily value per sensor
+                </div>
+                <div style={{fontSize:9,color:T.midGrey}}>Hover cells for details</div>
+              </div>
+              <SVGHeatmap data={filtered} sensors={sensors} indexKey={heatIdx}
+                indexLabel={MIX_OPTS.find(m=>m.v===heatIdx)?.l||heatIdx} width={800} height={200}/>
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Download Tab ──────────────────────────────────────────────────────────────
+function DownloadView() {
+  const [fmt,setFmt] = React.useState('csv');
+  const [filename,setFilename] = React.useState(`mycotools_${new Date().toISOString().slice(0,10)}`);
+
+  return (
+    <div style={{display:'grid',gridTemplateColumns:'280px 1fr',gap:16,padding:16,
+      height:'100%',overflow:'auto'}}>
+      <div style={{display:'flex',flexDirection:'column',gap:12}}>
+        <Card>
+          {sectionLabel('Export')}
+          <Sel label="Format" value={fmt} onChange={setFmt}
+            options={[{v:'csv',l:'CSV (comma)'},{v:'csv2',l:'CSV2 (semicolon)'},{v:'xlsx',l:'Excel (.xlsx)'}]}/>
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:10,fontWeight:600,color:T.charcoal,marginBottom:3}}>Filename</div>
+            <input type="text" value={filename} onChange={e=>setFilename(e.target.value)}/>
+          </div>
+          <Btn primary full onClick={()=>{}}>Download Processed Data</Btn>
+          <div style={{marginTop:10,padding:'8px 10px',background:T.nearWhite,
+            border:`1px solid ${T.lightGrey}`,fontSize:10,color:T.steel}}>
+            <strong style={{color:T.charcoal}}>File:</strong> {filename}.{fmt==='xlsx'?'xlsx':'csv'}<br/>
+            <strong style={{color:T.charcoal}}>Rows:</strong> 270 · <strong style={{color:T.charcoal}}>Cols:</strong> 9
+          </div>
+        </Card>
+      </div>
+      <Card style={{overflow:'auto'}}>
+        {sectionLabel('Generated Column Reference')}
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+          <thead>
+            <tr>{['Column','Type','Description'].map(h=>(
+              <th key={h} style={{background:T.nearWhite,padding:'6px 10px',textAlign:'left',
+                borderBottom:`1px solid ${T.lightGrey}`,fontSize:10,fontWeight:700}}>{h}</th>
+            ))}</tr>
+          </thead>
+          <tbody>
+            {[
+              ['gen_datetime','POSIXct','Standardised datetime'],
+              ['gen_date','Date','Date component'],
+              ['gen_sensorID','chr','Sensor identifier'],
+              ['gen_temp','dbl','Temperature (°C)'],
+              ['gen_rhum','dbl','Relative humidity (%)'],
+              ['gen_wood','dbl','Wood moisture (%)'],
+              ['gen_ohm','dbl','Ohm value'],
+              ['MIx_mold','dbl','Mold index (0 / 0.25 / 0.5 / 1)'],
+              ['MIx_temp','dbl','Temperature index (0 / 0.2 / 0.4 / 1)'],
+              ['MIx_wood','dbl','Wood index (0 / 0.25 / 0.5 / 1)'],
+              ['gen_season','chr','Winter / Spring / Summer / Fall'],
+              ['gen_year_season','chr',"e.g. '2024, Winter'"],
+              ['gen_isoweek','int','ISO 8601 week number'],
+              ['gen_isoyear','int','ISO year'],
+            ].map(([col,type,desc],i)=>(
+              <tr key={col} style={{background:i%2?T.offWhite:T.white}}>
+                <td style={{padding:'5px 10px',borderBottom:`0.5px solid ${T.lightGrey}`,
+                  fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.blue}}>{col}</td>
+                <td style={{padding:'5px 10px',borderBottom:`0.5px solid ${T.lightGrey}`,
+                  fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:T.steel}}>{type}</td>
+                <td style={{padding:'5px 10px',borderBottom:`0.5px solid ${T.lightGrey}`,
+                  fontSize:11,color:T.charcoal}}>{desc}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+// ── Tweaks ────────────────────────────────────────────────────────────────────
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "navColor": "#57A19F",
+  "accentColor": "#E03C31",
+  "defaultVar": "rhum",
+  "defaultSubTab": "heatmap"
+}/*EDITMODE-END*/;
+
+function TweaksPanel({visible, onClose, tweaks, setTweaks}) {
+  if(!visible) return null;
+  const row = (label, child) => (
+    <div style={{marginBottom:10}}>
+      <div style={{fontSize:10,fontWeight:600,color:T.charcoal,marginBottom:3}}>{label}</div>
+      {child}
+    </div>
+  );
+  return (
+    <div style={{position:'fixed',bottom:16,right:16,width:220,
+      background:T.white,border:`1.5px solid ${T.black}`,
+      padding:'14px 14px',zIndex:1000,boxShadow:'0 4px 16px rgba(0,0,0,0.12)'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+        <span style={{fontSize:11,fontWeight:700,color:T.black,letterSpacing:'0.04em',textTransform:'uppercase'}}>Tweaks</span>
+        <button onClick={onClose} style={{background:'none',border:'none',fontSize:14,cursor:'pointer',color:T.midGrey}}>×</button>
+      </div>
+      {row('Nav color',
+        <input type="color" value={tweaks.navColor}
+          onChange={e=>{const n={...tweaks,navColor:e.target.value};setTweaks(n);
+            window.parent?.postMessage({type:'__edit_mode_set_keys',edits:n},'*');}}
+          style={{width:'100%',height:28,border:`1px solid ${T.lightGrey}`,padding:2}}/>
+      )}
+      {row('Alert color',
+        <input type="color" value={tweaks.accentColor}
+          onChange={e=>{const n={...tweaks,accentColor:e.target.value};setTweaks(n);
+            window.parent?.postMessage({type:'__edit_mode_set_keys',edits:n},'*');}}
+          style={{width:'100%',height:28,border:`1px solid ${T.lightGrey}`,padding:2}}/>
+      )}
+      {row('Default variable',
+        <select value={tweaks.defaultVar} onChange={e=>{const n={...tweaks,defaultVar:e.target.value};setTweaks(n);}}>
+          {VAR_OPTS.map(v=><option key={v.v} value={v.v}>{v.l}</option>)}
+        </select>
+      )}
+      {row('Default dashboard tab',
+        <select value={tweaks.defaultSubTab} onChange={e=>{const n={...tweaks,defaultSubTab:e.target.value};setTweaks(n);}}>
+          {[['timeseries','Time Series'],['summary','Summary'],['distrib','Distributions'],['heatmap','Heatmap']].map(([v,l])=>(
+            <option key={v} value={v}>{l}</option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
+// ── App ───────────────────────────────────────────────────────────────────────
+function App() {
+  const [tab,setTab] = React.useState(()=>localStorage.getItem('mct_tab')||'upload');
+  const [fileImported,setFileImported] = React.useState(()=>localStorage.getItem('mct_imported')==='1');
+  const [dataProcessed,setDataProcessed] = React.useState(()=>localStorage.getItem('mct_processed')==='1');
+  const [tweaks,setTweaks] = React.useState(TWEAK_DEFAULTS);
+  const [tweaksVisible,setTweaksVisible] = React.useState(false);
+
+  React.useEffect(()=>{
+    // Register Tweaks toggle with host
+    const handler = e => {
+      if(e.data?.type==='__activate_edit_mode') setTweaksVisible(true);
+      if(e.data?.type==='__deactivate_edit_mode') setTweaksVisible(false);
+    };
+    window.addEventListener('message',handler);
+    window.parent?.postMessage({type:'__edit_mode_available'},'*');
+    return ()=>window.removeEventListener('message',handler);
+  },[]);
+
+  const go = t => { setTab(t); localStorage.setItem('mct_tab',t); };
+  const setFI = v => { setFileImported(v); localStorage.setItem('mct_imported',v?'1':'0'); };
+  const setDP = v => { setDataProcessed(v); localStorage.setItem('mct_processed',v?'1':'0'); };
+
+  // Apply tweaks to CSS vars
+  const navBg = tweaks.navColor;
+  const navDark = tweaks.navColor+'cc';
+
+  return (
+    <div style={{height:'100vh',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+      {/* 3px NASA-style top stripe */}
+      <div style={{height:3,background:T.black,flexShrink:0}}/>
+      <NavBar tab={tab} setTab={go} fileImported={fileImported} dataProcessed={dataProcessed}
+        navColor={navBg}/>
+      <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+        {tab==='upload'    && <UploadView fileImported={fileImported} setFileImported={setFI}/>}
+        {tab==='configure' && <ConfigureView dataProcessed={dataProcessed} setDataProcessed={setDP} setTab={go}/>}
+        {tab==='dashboard' && <DashboardView/>}
+        {tab==='download'  && <DownloadView/>}
+      </div>
+      {/* Footer */}
+      <div style={{height:28,background:T.white,borderTop:`1px solid ${T.lightGrey}`,
+        display:'flex',alignItems:'center',justifyContent:'space-between',
+        padding:'0 16px',flexShrink:0}}>
+        <span style={{fontSize:9,fontWeight:700,color:T.black,letterSpacing:'0.05em'}}>MYCOTEAM</span>
+        <span style={{fontSize:9,color:T.midGrey}}>Built by ANYthings · MycoTools v1.0 · April 2026</span>
+        <span style={{fontSize:9,color:T.midGrey,fontFamily:"'JetBrains Mono',monospace"}}>
+          {dataProcessed?'270 rows · 9 cols · 3 sensors':'—'}
+        </span>
+      </div>
+      <TweaksPanel visible={tweaksVisible} onClose={()=>setTweaksVisible(false)}
+        tweaks={tweaks} setTweaks={setTweaks}/>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
