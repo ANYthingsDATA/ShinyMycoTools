@@ -2,7 +2,9 @@
 
 A Shiny web application for processing and visualising indoor climate and moisture sensor data. Built for [Mycoteam](https://mycoteam.no) by [ANYthings](https://anythings.no).
 
-> **Proprietary software.** Copyright © 2024 ANYthings v/ Anders B. Nygaard and Mycoteam AS. All rights reserved. See [LICENSE](LICENSE).
+> **Proprietary software.** Copyright © 2024–2026 ANYthings v/ Anders B. Nygaard and Mycoteam AS. All rights reserved. See [LICENSE](LICENSE).
+>
+> Contact: anders [at] anythings.no
 
 ## What it does
 
