@@ -87,7 +87,8 @@
       "Maintainer": "Anders Nygaard <anders@anythings.no>",
       "RemoteType": "git",
       "RemoteUrl": "https://github.com/ANYthingsDATA/MycoTools.git",
-      "RemoteRef": "v0.2.1"
+      "RemoteRef": "v0.2.1",
+      "RemoteSha": "c457d247b2541d0f7d2507473539f8dd761db4b3"
     },
     "R6": {
       "Package": "R6",
