@@ -49,7 +49,7 @@
     },
     "MycoTools": {
       "Package": "MycoTools",
-      "Version": "0.2.1",
+      "Version": "0.2.2",
       "Source": "git",
       "Title": "Tools for Mycoteam Sensor Data Processing",
       "Authors@R": "c( person(\"Anders\", \"Nygaard\", , \"anders@anythings.no\", role = c(\"aut\", \"cre\"), comment = c(ORCID = \"0000-0003-1922-0751\")), person(\"ANYthings v/ Anders B. Nygaard\", role = c(\"cph\", \"fnd\")), person(\"Mycoteam AS\", role = \"cph\") )",
@@ -87,8 +87,8 @@
       "Maintainer": "Anders Nygaard <anders@anythings.no>",
       "RemoteType": "git",
       "RemoteUrl": "https://github.com/ANYthingsDATA/MycoTools.git",
-      "RemoteRef": "v0.2.1",
-      "RemoteSha": "c457d247b2541d0f7d2507473539f8dd761db4b3"
+      "RemoteRef": "v0.2.2",
+      "RemoteSha": "0fcc9a9d937d6c5f9dfb1048392f230bd83aed2e"
     },
     "R6": {
       "Package": "R6",

@@ -55,7 +55,7 @@
       "description": {
         "Package": "MycoTools",
         "Title": "Tools for Mycoteam Sensor Data Processing",
-        "Version": "0.2.1",
+        "Version": "0.2.2",
         "Authors@R": "c(\n    person(\"Anders\", \"Nygaard\", , \"anders@anythings.no\", role = c(\"aut\", \"cre\"),\n           comment = c(ORCID = \"0000-0003-1922-0751\")),\n    person(\"ANYthings v/ Anders B. Nygaard\", role = c(\"cph\", \"fnd\")),\n    person(\"Mycoteam AS\", role = \"cph\")\n  )",
         "Description": "Functions for importing, normalising, and analysing indoor\n    climate and moisture sensor data from heterogeneous logger formats.\n    Provides robust datetime parsing (unified or split date/time\n    columns), sensor-ID normalisation, decimal-comma-aware numeric\n    coercion, gap-filling on regular time intervals, season and\n    ISO-week derivation, and the MYCOindex risk scoring system for\n    mold, temperature, and wood moisture conditions. Developed by\n    ANYthings (sole proprietorship of Anders B. Nygaard) for\n    Mycoteam AS.",
         "License": "file LICENSE",
@@ -73,8 +73,8 @@
         "Built": "R 4.5.3; ; 2026-05-20 19:54:39 UTC; windows",
         "RemoteType": "git",
         "RemoteUrl": "https://github.com/ANYthingsDATA/MycoTools.git",
-        "RemoteRef": "v0.2.1",
-        "RemoteSha": "c457d247b2541d0f7d2507473539f8dd761db4b3"
+        "RemoteRef": "v0.2.2",
+        "RemoteSha": "0fcc9a9d937d6c5f9dfb1048392f230bd83aed2e"
       }
     },
     "R6": {
@@ -3318,7 +3318,7 @@
       "checksum": "9d6e6c0cf2592ba5ba631296d03a34c3"
     },
     "renv.lock": {
-      "checksum": "e04ad238f6ce4a40403aabe9669e721a"
+      "checksum": "26025ba5c929f85c2a6d8d3c21fc8d70"
     },
     "TODO.md": {
       "checksum": "628bdd5bb1e272eb5c510637d87a14b2"
